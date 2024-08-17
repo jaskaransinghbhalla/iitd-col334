@@ -1,0 +1,88 @@
+Running host for IP: 192.168.1.58
+{
+  "ip": "192.168.1.58",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.59.1
+{
+  "ip": "192.168.59.1",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.57
+{
+  "ip": "192.168.27.57",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.107
+{
+  "ip": "192.168.27.107",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.105
+{
+  "ip": "192.168.27.105",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 122.185.39.5
+{
+  "ip": "122.185.39.5",
+  "hostname": "nsg-corporate-5.39.185.122.airtel.in",
+  "city": "Dādri",
+  "region": "Uttar Pradesh",
+  "country": "IN",
+  "loc": "28.5526,77.5540",
+  "org": "AS9498 BHARTI Airtel Ltd.",
+  "postal": "203207",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 122.185.39.1
+{
+  "ip": "122.185.39.1",
+  "hostname": "nsg-corporate-1.39.185.122.airtel.in",
+  "city": "Dādri",
+  "region": "Uttar Pradesh",
+  "country": "IN",
+  "loc": "28.5526,77.5540",
+  "org": "AS9498 BHARTI Airtel Ltd.",
+  "postal": "203207",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 142.251.49.114
+{
+  "ip": "142.251.49.114",
+  "city": "Delhi",
+  "region": "Delhi",
+  "country": "IN",
+  "loc": "28.6519,77.2315",
+  "org": "AS15169 Google LLC",
+  "postal": "110001",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 142.250.193.206
+{
+  "ip": "142.250.193.206",
+  "hostname": "del11s17-in-f14.1e100.net",
+  "city": "Delhi",
+  "region": "Delhi",
+  "country": "IN",
+  "loc": "28.6519,77.2315",
+  "org": "AS15169 Google LLC",
+  "postal": "110001",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 142.251.54.97
+{
+  "ip": "142.251.54.97",
+  "city": "Delhi",
+  "region": "Delhi",
+  "country": "IN",
+  "loc": "28.6519,77.2315",
+  "org": "AS15169 Google LLC",
+  "postal": "110001",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------

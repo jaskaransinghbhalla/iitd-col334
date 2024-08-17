@@ -1,0 +1,97 @@
+Running host for IP: 192.168.1.58
+{
+  "ip": "192.168.1.58",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.59.1
+{
+  "ip": "192.168.59.1",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.69
+{
+  "ip": "192.168.27.69",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.57
+{
+  "ip": "192.168.27.57",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.109
+{
+  "ip": "192.168.27.109",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.111
+{
+  "ip": "192.168.27.111",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 192.168.27.107
+{
+  "ip": "192.168.27.107",
+  "bogon": true
+}--------------------------------------------
+Running host for IP: 122.185.39.5
+{
+  "ip": "122.185.39.5",
+  "hostname": "nsg-corporate-5.39.185.122.airtel.in",
+  "city": "Dādri",
+  "region": "Uttar Pradesh",
+  "country": "IN",
+  "loc": "28.5526,77.5540",
+  "org": "AS9498 BHARTI Airtel Ltd.",
+  "postal": "203207",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 182.79.247.94
+{
+  "ip": "182.79.247.94",
+  "city": "Chennai",
+  "region": "Tamil Nadu",
+  "country": "IN",
+  "loc": "13.0878,80.2785",
+  "postal": "600001",
+  "timezone": "Asia/Kolkata",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 38.142.132.58
+{
+  "ip": "38.142.132.58",
+  "city": "Southfield",
+  "region": "Michigan",
+  "country": "US",
+  "loc": "42.4734,-83.2219",
+  "org": "AS174 Cogent Communications",
+  "postal": "48086",
+  "timezone": "America/Detroit",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 190.92.147.9
+{
+  "ip": "190.92.147.9",
+  "hostname": "e1-2.mi3-c1-e02.09-33.a2webhosting.com",
+  "city": "Detroit",
+  "region": "Michigan",
+  "country": "US",
+  "loc": "42.3314,-83.0457",
+  "org": "AS55293 A2 Hosting, Inc.",
+  "postal": "48226",
+  "timezone": "America/Detroit",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------
+Running host for IP: 190.92.158.4
+{
+  "ip": "190.92.158.4",
+  "hostname": "server.hosting3.acm.org",
+  "city": "Detroit",
+  "region": "Michigan",
+  "country": "US",
+  "loc": "42.3314,-83.0457",
+  "org": "AS55293 A2 Hosting, Inc.",
+  "postal": "48226",
+  "timezone": "America/Detroit",
+  "readme": "https://ipinfo.io/missingauth"
+}--------------------------------------------

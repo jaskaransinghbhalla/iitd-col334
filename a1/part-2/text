@@ -1,0 +1,57 @@
+graph TD
+    A[User A] -->|STUN/TURN| B(Microsoft Relay Server)
+    C[User B] -->|STUN/TURN| B
+    B -->|RTP/SRTP| A
+    B -->|RTP/SRTP| C
+    D[Microsoft Data Center]
+    B <--> D
+    E[Teams Service]
+    D <--> E
+
+
+    If you're not observing a direct connection between two hosts during a Microsoft Teams call, it's likely due to the way Teams handles network connections. Here's an explanation of what could be happening:
+
+Relay Servers:
+Microsoft Teams often uses relay servers to facilitate connections. This means that instead of a direct peer-to-peer connection, the traffic is routed through Microsoft's infrastructure.
+NAT Traversal:
+Many users are behind Network Address Translation (NAT) devices, which can make direct connections difficult. Teams uses techniques like STUN and TURN to overcome these barriers.
+Improved Reliability:
+Routing through Microsoft's servers can provide better connection quality and reliability, especially across different networks or geographic locations.
+Security:
+Using relay servers can enhance security by obscuring the direct IP addresses of participants.
+Firewall Bypassing:
+Many corporate firewalls block peer-to-peer connections. Routing through known Microsoft servers helps bypass these restrictions.
+Traffic Optimization:
+Microsoft can optimize the route of the traffic through their global network, potentially providing better performance than a direct internet path between peers.
+Multi-party Calls:
+In calls with more than two participants, using a central relay point is more efficient than multiple peer-to-peer connections.
+
+Here's a more detailed breakdown of the process:
+Microsoft Teams Connection ProcessClick to open diagram
+
+Connection Establishment:
+
+When a call is initiated, both clients contact Microsoft's servers using STUN/TURN protocols.
+These servers help determine the best way to establish the connection.
+
+
+Media Relay:
+
+If a direct connection isn't possible, the audio/video streams (RTP/SRTP packets) are sent to Microsoft's relay servers.
+These servers then forward the packets to the other participant(s).
+
+
+Signaling:
+
+Call setup, control messages, and other signaling data typically go through Microsoft's Teams services, often using HTTPS or secure WebSocket connections.
+
+
+Endpoints:
+
+You'll likely see your client connecting to an IP address in Microsoft's range (often 52.112.0.0/14 for Teams).
+The other participant will typically connect to a different IP in the same range.
+
+
+
+This approach allows Teams to provide reliable communication even in complex network environments, at the cost of slightly increased latency compared to a direct peer-to-peer connection. It's a trade-off between reliability, security, and performance that Microsoft has deemed optimal for most use cases.
+Would you like me to elaborate on any specific aspect of this process?

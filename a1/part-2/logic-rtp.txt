@@ -1,0 +1,5 @@
+Audio Filter
+rtp and( rtp.p_type == 120 or rtp.p_type == 108)
+
+Video Filter
+rtp and( rtp.p_type == 122 or  rtp.p_type == 123 or rtp.p_type == 124 or rtp.p_type == 125) 
