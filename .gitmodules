@@ -1,3 +1,12 @@
 [submodule "a1/part-2/66b9eb7cbae42a1e3def7224"]
 	path = a1/part-2/66b9eb7cbae42a1e3def7224
 	url = https://git@git.overleaf.com/66c05093b2477efc01ade4a0
+[submodule "a1/part-3/report"]
+	path = a1/part-3/report
+	url = https://git@git.overleaf.com/66b9eb7cbae42a1e3def7224
+[submodule "a1/part-1/report"]
+	path = a1/part-1/report
+	url = https://git@git.overleaf.com/66b30c66241620d879edcc34
+[submodule "a1/part-2/report"]
+	path = a1/part-2/report
+	url = https://git@git.overleaf.com/66b30c66241620d879edcc34
