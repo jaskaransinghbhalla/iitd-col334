@@ -27,21 +27,33 @@ def isolate_traffic(pkt):
             ip_layer.src == "61.246.223.11" and ip_layer.dst == "192.168.29.159"
         ) or (ip_layer.dst == "61.246.223.11" and ip_layer.src == "192.168.29.159")
 
-        # Doubtful about the ports to be used
-        tcp_condition = (tcp_layer.dport == 46000 and tcp_layer.sport == 443) or (
-            tcp_layer.sport == 46000 and tcp_layer.dport == 443
+        tcp_condition = (
+            (tcp_layer.dport == 46000 and tcp_layer.sport == 443)
+            or (tcp_layer.sport == 46000 and tcp_layer.dport == 443)
+            or (tcp_layer.dport == 39070 and tcp_layer.sport == 443)
+            or (tcp_layer.sport == 39070 and tcp_layer.dport == 443)
         )
         return eth_condition and ip_condition and tcp_condition
     else:
         return False
 
 
-def is_download(src_ip, dst_ip):
-    return src_ip == "61.246.223.11" and dst_ip == "192.168.29.159"
+def is_download(src_ip, dst_ip, src_port, dst_port):
+    return (
+        src_ip == "61.246.223.11"
+        and dst_ip == "192.168.29.159"
+        and dst_port == 46000
+        and src_port == 443
+    )
 
 
-def is_upload(src_ip, dst_ip):
-    return src_ip == "192.168.29.159" and dst_ip == "61.246.223.11"
+def is_upload(src_ip, dst_ip, src_port, dst_port):
+    return (
+        src_ip == "192.168.29.159"
+        and dst_ip == "61.246.223.11"
+        and src_port == 39070
+        and dst_port == 443
+    )
 
 
 def plot_time_series(filtered_packets):
@@ -58,12 +70,14 @@ def plot_time_series(filtered_packets):
         second = int(timestamp - start_time)
         src_ip = packet[IP].src
         dst_ip = packet[IP].dst
+        src_port = packet[TCP].sport
+        dst_port = packet[TCP].dport
         buf = bytes(packet)
         data_len = len(buf) * 8 / 1e3
 
-        if is_download(src_ip, dst_ip):
+        if is_download(src_ip, dst_ip, src_port, dst_port):
             download_speeds[second].append(data_len)
-        elif is_upload(src_ip, dst_ip):
+        elif is_upload(src_ip, dst_ip, src_port, dst_port):
             upload_speeds[second].append(data_len)
 
     # Calculate average throughput per second
@@ -132,32 +146,39 @@ def calculate_speed(filtered_packets):
     if not filtered_packets:
         return 0, 0
 
-    start_time = filtered_packets[0].time
-    end_time = filtered_packets[-1].time
-    duration = (int)(end_time - start_time)
-    print(duration)
     download = 0
     upload = 0
+    download_packets = []
+    upload_packets = []
 
     for packet in filtered_packets:
         src_ip = packet[IP].src
         dst_ip = packet[IP].dst
         buf = bytes(packet)
         data_len = len(buf) * 8 / 1e6  # Convert to Mbps
-
-        if is_download(src_ip, dst_ip):
+        src_port = packet[TCP].sport
+        dst_port = packet[TCP].dport
+        if is_download(src_ip, dst_ip, src_port, dst_port):
             download += data_len
-        elif is_upload(src_ip, dst_ip):
+            download_packets.append(packet)
+        elif is_upload(src_ip, dst_ip, src_port, dst_port):
             upload += data_len
-    if duration > 0:
-        avg_download_speed = download / duration
-        avg_upload_speed = upload / duration
+            upload_packets.append(packet)
+    download_duration = (float)(download_packets[-1].time - download_packets[0].time)
+    upload_duration = (float)(upload_packets[-1].time - upload_packets[0].time)
+
+    if download_duration > 0:
+        avg_download_speed = download / download_duration
     else:
         avg_download_speed = 0
+
+    if upload_duration > 0:
+        avg_upload_speed = upload / upload_duration
+    else:
         avg_upload_speed = 0
 
-    avg_download_speed = round(avg_download_speed, 3)
-    avg_upload_speed = round(avg_upload_speed, 3)
+    avg_download_speed = round(avg_download_speed, 2)
+    avg_upload_speed = round(avg_upload_speed, 2)
 
     save_as_csv(
         avg_download_speed=avg_download_speed,
