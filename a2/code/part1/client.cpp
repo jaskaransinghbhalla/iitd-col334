@@ -7,18 +7,30 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#define PORT 3000
+
 int main()
 
 {
-    // - AF_INET: Indicates that the socket will use the IPv4 protocol.
-    // - SOCK_STREAM: Specifies the type of socket. This type provides connection-oriented, reliable, and order-preserving data transmission.
-    // - 0: This parameter specifies the protocol to be used, and TCP (the default protocol) is selected.
-    int listening = socket(AF_INET, SOCK_STREAM, 0);
+    int client_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 
-    // if listening is negative creation of server fails
-    if (listening == -1)
+    if (client_sock_fd == -1)
     {
-        std::cerr << "Can't create a socket! Quitting…" << std::endl;
+        perror("Socker creation failed");
+        exit(EXIT_FAILURE);
+    }
+    sockaddr_in address;
+    int address_len = sizeof(address);
+    address.sin_family = AF_INET;
+    address.sin_port = htons(PORT);
+    address.sin_addr.s_addr = INADDR_ANY; // connecting to any IPaddress
+    if (connect(client_sock_fd, (struct sockaddr *)&address, sizeof(address)) < 0)
+    {
+        std::cout << "Connection Failed" << std::endl;
         return -1;
     }
+
+    std::cout << "Connected to server" << std::endl;
+    close(client_sock_fd);
+    return 0;
 }
