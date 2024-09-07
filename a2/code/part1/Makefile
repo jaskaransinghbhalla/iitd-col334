@@ -1,0 +1,48 @@
+# Compiler
+CXX = g++
+
+# Compiler flags
+CXXFLAGS = -Wall -std=c++11
+
+# Source files
+SERVER_SRC = server.cpp
+CLIENT_SRC = client.cpp
+
+# Output executables
+SERVER_OUT = server
+CLIENT_OUT = client
+
+# ifeq ($(OS),Windows_NT)
+#     DETECTED_OS := Windows
+#     EXE := .exe
+#     RM := del /Q
+#     RUN_SERVER := start /B $(SERVER_OUT)
+#     RUN_CLIENT := start /B $(CLIENT_OUT)
+# else
+#     DETECTED_OS := $(shell uname -s)
+#     EXE :=
+#     RM := rm -f
+#     RUN_SERVER := ./$(SERVER_OUT) &
+#     RUN_CLIENT := ./$(CLIENT_OUT)
+# endif
+
+# Default target
+all: $(SERVER_OUT) $(CLIENT_OUT)
+
+# Server target
+$(SERVER_OUT): $(SERVER_SRC)
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+# Client target
+$(CLIENT_OUT): $(CLIENT_SRC)
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+# Clean target
+clean:
+	rm -f $(SERVER_OUT) $(CLIENT_OUT)
+# Run target
+# run: $(SERVER_OUT) $(CLIENT_OUT)
+# 	$(RUN_SERVER)
+# 	$(RUN_CLIENT)
+# Phony targets
+.PHONY: all clean

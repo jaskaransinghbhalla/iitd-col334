@@ -6,12 +6,66 @@
 #include <sys/socket.h> // sockets
 #include <netdb.h>
 #include <unistd.h>
+#include <fstream>
+// using namespace std;
 
 #define PORT 3000
+const int BUFFER_SIZE = 1024;
+
+std::vector<std::string> words;
+void loadWords(const std::string &filename)
+{
+    std::ifstream file(filename);
+    std::string word;
+    while (std::getline(file, word, ','))
+    {
+        words.push_back(word);
+    }
+    words.push_back("EOF");
+}
+
+void handleClient(int client_socket)
+{
+    char buffer[BUFFER_SIZE] = {0};
+    while (true)
+    {
+        // It fills the first BUFFER_SIZE bytes of the memory area pointed to by buffer with zeros.
+        memset(buffer, 0, BUFFER_SIZE);
+
+        int valread = read(client_socket, buffer, BUFFER_SIZE);
+        if (valread <= 0)
+            break;
+        // Converts the received string (assumed to be a number) to an integer.
+        // This offset represents the starting position in the word list requested by the client.
+        int offset = std::stoi(buffer);
+        // Checks if the requested offset is beyond the end of the word list
+        if (offset >= words.size())
+        {
+            // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
+            send(client_socket, "$$\n", 3, 0);
+        }
+        // If the offset is valid, enter this block to send words to the client
+        else
+        {
+            std::cout << "Sending data to client" << std::endl;
+            // Loops up to 10 times or until the end of the word list is reached
+            for (int i = 0; i < 10 && offset + i < words.size(); ++i)
+            {
+                // Prepares a response string with a word and a newline character
+                std::string response = words[offset + i] + "\n";
+                // Sends the response string to the client.
+                send(client_socket, response.c_str(), response.length(), 0);
+            }
+        }
+        break;
+    }
+    close(client_socket);
+    std::cout << "Connection closed" << std::endl;
+}
 
 int main()
-{
 
+{
     // In Unix-like systems, sockets are treated as files, and each is assigned a unique file descriptor (which is just an integer).
     // - AF_INET: Indicates that the socket will use the IPv4 protocol.
     // - SOCK_STREAM: Specifies the type of socket. This type provides connection-oriented, reliable, and order-preserving data transmission.
@@ -44,6 +98,13 @@ int main()
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
+    // Bind to port even when it is on time wait
+    // int opt = 1;
+    // if (setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
+    // {
+    //     perror("setsockopt");
+    //     exit(EXIT_FAILURE);
+    // }
 
     // Listening on a socket means configuring the socket to accept incoming connection requests.
     // It prepares the socket to receive client connections, creating a queue for incoming connection requests.
@@ -57,6 +118,8 @@ int main()
 
     int client_socket;
 
+    loadWords("words.txt");
+
     while (true)
     {
         if ((client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), (socklen_t *)&address_len)) < 0)
@@ -66,9 +129,7 @@ int main()
         }
 
         std::cout << "Client connected" << std::endl;
-
-        close(client_socket);
-        std::cout << "Connection closed" << std::endl;
+        handleClient(client_socket);
     }
     return 0;
 }
