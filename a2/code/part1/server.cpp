@@ -1,23 +1,26 @@
 // Server
 
 // Packages
-#include <iostream>     // Provides input/output stream objects like cin, cout, cerr
-#include <sys/socket.h> // Includes core functions and structures for socket programming
-#include <netdb.h>      // Provides functions for network address and service translation
-#include <unistd.h>     // Provides POSIX operating system API like close()
-#include <fstream>      // Provides file stream classes for reading/writing files
-#include <netinet/in.h> // Provides Internet address family structures and constants
 #include <arpa/inet.h>  // Provides functions for manipulating IP addresses (like inet_addr)
+#include <fstream>      // Provides file stream classes for reading/writing files
+#include <iostream>     // Provides input/output stream objects like cin, cout, cerr
+#include <netdb.h>      // Provides functions for network address and service translation
+#include <netinet/in.h> // Provides Internet address family structures and constants
+#include <sys/socket.h> // Includes core functions and structures for socket programming
+#include <unistd.h>     // Provides POSIX operating system API like close()
 
-// global variables
+// read from config
 int port;
-std::string ip_address;
 std::string input_file;
+std::string ip_address;
+int words_per_packet;
+
+const int BUFFER_SIZE = 1024;
+std::vector<std::string> words;
 
 void read_config()
 {
-
-    // Open the config file
+    // open config as txt
     std::ifstream config_file("config_server.txt");
 
     if (config_file.is_open())
@@ -26,7 +29,7 @@ void read_config()
         config_file >> port;
         config_file >> ip_address;
         config_file >> input_file;
-
+        config_file >> words_per_packet;
         // Close the file
         config_file.close();
     }
@@ -36,12 +39,6 @@ void read_config()
     }
 }
 
-// #define PORT 3000
-const int BUFFER_SIZE = 1024;
-
-int words_per_packet = 2;
-
-std::vector<std::string> words;
 void loadWords(const std::string &filename)
 {
     std::ifstream file(filename);
@@ -64,57 +61,60 @@ void handleClient(int client_socket)
         int valread = read(client_socket, buffer, BUFFER_SIZE);
         if (valread <= 0)
             break;
+
         // Converts the received string (assumed to be a number) to an integer.
         // This offset represents the starting position in the word list requested by the client.
+
         int offset = std::stoi(buffer);
         // std::cout << "offset is " << offset << std::endl;
         // Checks if the requested offset is beyond the end of the word list
+
         if (offset >= words.size())
         {
             // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
             send(client_socket, "$$\n", 3, 0);
+            break;
         }
+
         // If the offset is valid, enter this block to send words to the client
         else
         {
 
             // std::cout << "Sending data to client" << std::endl;
             // Loops up to 10 times or until the end of the word list is reached
-            for (int i = 0; offset + i < words.size();)
+            // for (int i = 0; offset + i < words.size();)
+            // {
+            // Prepares a response string with a word and a newline character
+
+            std::string response;
+            for (int j = 0; j < words_per_packet && offset + j < words.size(); j++)
             {
-                // Prepares a response string with a word and a newline character
-                std::string response;
-
-                for (int j = 0; j < words_per_packet && offset + i < words.size(); j++, i++)
-                {
-                    response = response + words[offset + i];
-                    response = response + ",";
-                }
-
-                // End of packet
-                if (!response.empty())
-                {
-                    response.pop_back();
-                    response = response + "\n";
-                }
-
-                // std::cout << response;
-
-                // Sends the response string to the client.
-                send(client_socket, response.c_str(), response.length(), 0);
+                response = response + words[offset + j];
+                response = response + ",";
             }
+
+            // End of packet
+            if (!response.empty())
+            {
+                response.pop_back();
+                response = response + "\n";
+            }
+
+            // std::cout << response;
+
+            // Sends the response string to the client.
+            send(client_socket, response.c_str(), response.length(), 0);
+            // }
         }
-        break;
     }
     close(client_socket);
     std::cout << "Connection closed" << std::endl;
 }
 
-int main()
-
+void server()
 {
 
-    read_config();
+    // Sever Socket
 
     // In Unix-like systems, sockets are treated as files, and each is assigned a unique file descriptor (which is just an integer).
     // - AF_INET: Indicates that the socket will use the IPv4 protocol.
@@ -129,6 +129,8 @@ int main()
         exit(EXIT_FAILURE);
     }
 
+    // Server Address
+
     // sockaddr_in is a structure used to represent an Internet Protocol version 4(IPv4)socket address.
     // - sin_family: This member specifies the address family. AF_INET is used for IPv4.
     // - sin_port: Specifies the port number as a 16-bit integer.
@@ -136,10 +138,9 @@ int main()
     sockaddr_in address;
     int address_len = sizeof(address);
     address.sin_family = AF_INET;
-    // address.sin_addr.s_addr = INADDR_ANY;
     if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
     {
-        std::cout << ip_address;
+        // std::cout << ip_address;
         // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
         address.sin_addr.s_addr = INADDR_ANY;
     }
@@ -149,11 +150,12 @@ int main()
         if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0)
         {
             std::cerr << "Invalid address/ Address not supported" << std::endl;
-            return 1;
         }
     }
-    // accepting connections on any ip address
+
     address.sin_port = htons(port);
+
+    // Binding
 
     // The part where we bind the socket to an IP address and a port
     // Binding a socket means associating the socket with a specific address and port number on the local machine.
@@ -164,13 +166,8 @@ int main()
         perror("bind failed");
         exit(EXIT_FAILURE);
     }
-    // Bind to port even when it is on time wait
-    // int opt = 1;
-    // if (setsockopt(server_socket_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)))
-    // {
-    //     perror("setsockopt");
-    //     exit(EXIT_FAILURE);
-    // }
+
+    // Listening
 
     // Listening on a socket means configuring the socket to accept incoming connection requests.
     // It prepares the socket to receive client connections, creating a queue for incoming connection requests.
@@ -184,9 +181,6 @@ int main()
 
     int client_socket;
 
-    // loading the words from the file
-    loadWords(input_file);
-
     while (true)
     {
         if ((client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), (socklen_t *)&address_len)) < 0)
@@ -198,5 +192,18 @@ int main()
         std::cout << "Client connected" << std::endl;
         handleClient(client_socket);
     }
+}
+
+int main()
+
+{
+    // Reading configuration
+    read_config();
+
+    // Loading the words from the file
+    loadWords(input_file);
+
+    // Create a server
+    server();
     return 0;
 }
