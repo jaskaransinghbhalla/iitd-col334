@@ -102,6 +102,7 @@ void count_word(const std::string &word)
 
 std::string process_packet(std::string packet_data)
 {
+
     std::vector<std::string> words;
     std::istringstream iss(packet_data);
     std::string token;
@@ -183,6 +184,7 @@ void request(int client_sock_fd)
             exit(EXIT_FAILURE);
         }
 
+        std::cout << buffer << std::endl;
         // if offset is greater than number of words or failure to read
         if (valread <= 0 || strcmp(buffer, "$$\n") == 0)
         {
