@@ -13,8 +13,37 @@
 #include <fstream>
 #include <sstream>
 
-#define PORT 3000 // pre-defined ip and port ??
+// global variables
+int port;
+std::string ip_address;
+int offset;
 const int BUFFER_SIZE = 1024;
+
+void read_config()
+{
+
+    // Open the config file
+    std::ifstream config_file("config.txt");
+
+    if (config_file.is_open())
+    {
+        // Read the values from the file
+        config_file >> port;
+        config_file >> ip_address;
+        config_file >> offset;
+
+        // Close the file
+        config_file.close();
+
+        // Print the values to verify
+        std::cout << "Port: " << port << std::endl;
+        std::cout << "IP Address: " << ip_address << std::endl;
+    }
+    else
+    {
+        std::cerr << "Unable to open config.txt" << std::endl;
+    }
+}
 
 // Word Frequency mapƒ
 std::map<std::string, int> wordFrequency;
@@ -112,6 +141,7 @@ void printWordFrequency()
 int main()
 
 {
+    read_config();
     writeWithOfstream("output.txt", "", false);
     // Client-side socket
     int client_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -126,9 +156,22 @@ int main()
     // address definitions for client-side socket
     sockaddr_in address;
     int address_len = sizeof(address);
-    address.sin_addr.s_addr = INADDR_ANY; // connecting to server on any IP address
+    if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
+    {
+        // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
+        address.sin_addr.s_addr = INADDR_ANY;
+    }
+    else
+    {
+        // Otherwise, use the IP address from the config file
+        if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0)
+        {
+            std::cerr << "Invalid address/ Address not supported" << std::endl;
+            return 1;
+        }
+    } // connecting to server on any IP address
     address.sin_family = AF_INET;
-    address.sin_port = htons(PORT);
+    address.sin_port = htons(port);
 
     // Establishing a connections to server and check for connections failure
     if (connect(client_sock_fd, (struct sockaddr *)&address, address_len) < 0)
@@ -140,10 +183,6 @@ int main()
     // Connected to server successfully
     std::cout << "Connected to server" << std::endl;
 
-    // dbt offset has to be taken as input or a fixed value, for now i am assuming that it has to be taken as input
-    // reading the offset and displaying it
-    int offset;
-    std::cin >> offset;
     // std::cout << "Read offset set to " << offset << std::endl;
 
     // Buffer array to read

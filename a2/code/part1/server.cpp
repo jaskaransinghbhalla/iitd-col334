@@ -1,4 +1,5 @@
-// server socket
+// Server
+
 // Socket
 // A socket is an endpoint for communication between two programs running on a network. It's essentially a combination of an IP address and a port number.
 
@@ -7,9 +8,39 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <fstream>
-// using namespace std;
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
-#define PORT 3000
+// global variables
+int port;
+std::string ip_address;
+
+void read_config()
+{
+
+    // Open the config file
+    std::ifstream config_file("config.txt");
+
+    if (config_file.is_open())
+    {
+        // Read the values from the file
+        config_file >> port;
+        config_file >> ip_address;
+
+        // Close the file
+        config_file.close();
+
+        // Print the values to verify
+        // std::cout << "Port: " << port << std::endl;
+        // std::cout << "IP Address: " << ip_address << std::endl;
+    }
+    else
+    {
+        std::cerr << "Unable to open config.txt" << std::endl;
+    }
+}
+
+// #define PORT 3000
 const int BUFFER_SIZE = 1024;
 
 int words_per_packet = 2;
@@ -53,7 +84,7 @@ void handleClient(int client_socket)
 
             // std::cout << "Sending data to client" << std::endl;
             // Loops up to 10 times or until the end of the word list is reached
-            for (int i = 0; offset + i < words.size(); )
+            for (int i = 0; offset + i < words.size();)
             {
                 // Prepares a response string with a word and a newline character
                 std::string response;
@@ -86,6 +117,9 @@ void handleClient(int client_socket)
 int main()
 
 {
+
+    read_config();
+
     // In Unix-like systems, sockets are treated as files, and each is assigned a unique file descriptor (which is just an integer).
     // - AF_INET: Indicates that the socket will use the IPv4 protocol.
     // - SOCK_STREAM: Specifies the type of socket. This type provides connection-oriented, reliable, and order-preserving data transmission.
@@ -106,8 +140,24 @@ int main()
     sockaddr_in address;
     int address_len = sizeof(address);
     address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY; // accepting connections on any ip address
-    address.sin_port = htons(PORT);
+    // address.sin_addr.s_addr = INADDR_ANY;
+    if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
+    {
+        std::cout << ip_address;
+        // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
+        address.sin_addr.s_addr = INADDR_ANY;
+    }
+    else
+    {
+        // Otherwise, use the IP address from the config file
+        if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0)
+        {
+            std::cerr << "Invalid address/ Address not supported" << std::endl;
+            return 1;
+        }
+    }
+    // accepting connections on any ip address
+    address.sin_port = htons(port);
 
     // The part where we bind the socket to an IP address and a port
     // Binding a socket means associating the socket with a specific address and port number on the local machine.
@@ -134,7 +184,7 @@ int main()
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
-    std::cout << "Server listening on port " << PORT << std::endl;
+    std::cout << "Server listening on port " << port << std::endl;
 
     int client_socket;
 
