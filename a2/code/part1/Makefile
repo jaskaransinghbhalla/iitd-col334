@@ -25,8 +25,8 @@ clean:
 	rm -f $(SERVER_OUT) $(CLIENT_OUT)
 
 # Run target
-# run: $(SERVER_OUT) $(CLIENT_OUT)
-# 	./$(SERVER_OUT) & ./$(CLIENT_OUT)
+run: $(SERVER_OUT) $(CLIENT_OUT)
+	./$(SERVER_OUT) & ./$(CLIENT_OUT)
 
 # Phony targets
 .PHONY: all clean run

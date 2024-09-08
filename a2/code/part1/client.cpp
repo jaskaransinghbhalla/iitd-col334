@@ -23,7 +23,7 @@ void read_config()
 {
 
     // Open the config file
-    std::ifstream config_file("config.txt");
+    std::ifstream config_file("config_client.txt");
 
     if (config_file.is_open())
     {

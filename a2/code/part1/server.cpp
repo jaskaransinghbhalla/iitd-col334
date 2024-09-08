@@ -1,38 +1,34 @@
 // Server
 
-// Socket
-// A socket is an endpoint for communication between two programs running on a network. It's essentially a combination of an IP address and a port number.
-
-#include <iostream>     // input/output
-#include <sys/socket.h> // sockets
-#include <netdb.h>
-#include <unistd.h>
-#include <fstream>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+// Packages
+#include <iostream>     // Provides input/output stream objects like cin, cout, cerr
+#include <sys/socket.h> // Includes core functions and structures for socket programming
+#include <netdb.h>      // Provides functions for network address and service translation
+#include <unistd.h>     // Provides POSIX operating system API like close()
+#include <fstream>      // Provides file stream classes for reading/writing files
+#include <netinet/in.h> // Provides Internet address family structures and constants
+#include <arpa/inet.h>  // Provides functions for manipulating IP addresses (like inet_addr)
 
 // global variables
 int port;
 std::string ip_address;
+std::string input_file;
 
 void read_config()
 {
 
     // Open the config file
-    std::ifstream config_file("config.txt");
+    std::ifstream config_file("config_server.txt");
 
     if (config_file.is_open())
     {
         // Read the values from the file
         config_file >> port;
         config_file >> ip_address;
+        config_file >> input_file;
 
         // Close the file
         config_file.close();
-
-        // Print the values to verify
-        // std::cout << "Port: " << port << std::endl;
-        // std::cout << "IP Address: " << ip_address << std::endl;
     }
     else
     {
@@ -188,7 +184,8 @@ int main()
 
     int client_socket;
 
-    loadWords("words.txt");
+    // loading the words from the file
+    loadWords(input_file);
 
     while (true)
     {
