@@ -40,7 +40,7 @@ void handleClient(int client_socket)
         // Converts the received string (assumed to be a number) to an integer.
         // This offset represents the starting position in the word list requested by the client.
         int offset = std::stoi(buffer);
-        std::cout << "offset is " << offset << std::endl;
+        // std::cout << "offset is " << offset << std::endl;
         // Checks if the requested offset is beyond the end of the word list
         if (offset >= words.size())
         {
@@ -51,7 +51,7 @@ void handleClient(int client_socket)
         else
         {
 
-            std::cout << "Sending data to client" << std::endl;
+            // std::cout << "Sending data to client" << std::endl;
             // Loops up to 10 times or until the end of the word list is reached
             for (int i = 0; offset + i < words.size(); )
             {
@@ -71,7 +71,7 @@ void handleClient(int client_socket)
                     response = response + "\n";
                 }
 
-                std::cout << response;
+                // std::cout << response;
 
                 // Sends the response string to the client.
                 send(client_socket, response.c_str(), response.length(), 0);

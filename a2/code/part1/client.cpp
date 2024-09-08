@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <map>
 #include <string>
+#include <fstream>
 #include <sstream>
 
 #define PORT 3000 // pre-defined ip and port ??
@@ -18,9 +19,29 @@ const int BUFFER_SIZE = 1024;
 // Word Frequency mapƒ
 std::map<std::string, int> wordFrequency;
 
+void writeWithOfstream(const std::string &filename, const std::string &content, bool append = false)
+{
+    std::ofstream outFile;
+
+    if (append)
+    {
+        outFile.open(filename, std::ios_base::app);
+    }
+    else
+    {
+        outFile.open(filename);
+    }
+
+    if (outFile.is_open())
+    {
+        outFile << content;
+        outFile.close();
+    }
+}
+
 void countWord(const std::string &word)
 {
-    if (word != "\n" || word != "EOF") // check this exactly
+    if (word != "\n" && word != "EOF") // check this exactly
     {
         wordFrequency[word]++;
     }
@@ -82,13 +103,16 @@ void printWordFrequency()
 
     for (const auto &pair : pairs)
     {
-        std::cout << pair.first << "," << pair.second << std::endl;
+        std::string result = pair.first + ",";
+        result += std::to_string(pair.second) + '\n';
+        writeWithOfstream("output.txt", result, true);
     }
 }
 
 int main()
 
 {
+    writeWithOfstream("output.txt", "", false);
     // Client-side socket
     int client_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -120,7 +144,7 @@ int main()
     // reading the offset and displaying it
     int offset;
     std::cin >> offset;
-    std::cout << "Read offset set to " << offset << std::endl;
+    // std::cout << "Read offset set to " << offset << std::endl;
 
     // Buffer array to read
     char buffer[BUFFER_SIZE] = {0};
@@ -131,7 +155,7 @@ int main()
         // converting offset to the required api level syntax
         std::string request = std::to_string(offset) + "\n";
 
-        std::cout << "Request data from server..." << std::endl;
+        // std::cout << "Request data from server..." << std::endl;
 
         // sending the request
         // client_sock_fd: This is the first argument to send(). It's a file descriptor representing the client socket to which the data will be sent.
@@ -145,12 +169,10 @@ int main()
         }
         else
         {
-            std::cout << "Request for data sent" << std::endl;
+            // std::cout << "Request for data sent" << std::endl;
         }
 
         bool endOfFile = false;
-
-        int packet = 0;
 
         while (true)
         {
