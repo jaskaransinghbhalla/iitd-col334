@@ -1,0 +1,55 @@
+<netdb.h>:
+This header file provides definitions for network database operations. It includes functions and structures for:
+
+Translating protocol names and host names into numeric addresses
+Service name to port number mappings
+Retrieving information about network hosts
+
+Some key functions declared in this header include:
+
+gethostbyname(): Get host information by name
+getservbyname(): Get service information by name
+getaddrinfo(): Get address information
+
+
+<netinet/in.h>:
+This header file contains definitions for the Internet Protocol family. It provides:
+
+Address structure for Internet socket address (sockaddr_in)
+Internet address manipulation routines
+Definitions for Internet address families and socket types
+
+Key elements defined in this header include:
+
+struct sockaddr_in: IPv4 socket address structure
+struct in_addr: Internet address structure
+Macros for manipulating IP addresses (e.g., htons(), ntohs())
+
+Certainly, I'd be happy to explain htons() and its counterpart ntohs().
+htons() and ntohs() are functions used for handling byte order in network programming. They're defined in <arpa/inet.h> (which is often included by <netinet/in.h>). Let's break them down:
+
+htons(): Host to Network Short
+
+Function signature: uint16_t htons(uint16_t hostshort);
+Purpose: Converts a 16-bit integer from host byte order to network byte order.
+"h" stands for host, "to" means conversion, "n" stands for network, and "s" stands for short (16-bit integer).
+
+
+ntohs(): Network to Host Short
+
+Function signature: uint16_t ntohs(uint16_t netshort);
+Purpose: Converts a 16-bit integer from network byte order to host byte order.
+It's the inverse operation of htons().
+
+
+
+The main difference between them:
+
+htons() is used when sending data out to the network. It ensures that the data is in the standardized network byte order.
+ntohs() is used when receiving data from the network. It converts the received data from network byte order to the host's native byte order.
+
+Why are these functions necessary?
+Different computer architectures store multi-byte integers in different orders (endianness). For example:
+
+Little-endian: Least significant byte first (e.g., x86 processors)
+Big-endian: Most significant byte first (e.g., some RISC processors)
