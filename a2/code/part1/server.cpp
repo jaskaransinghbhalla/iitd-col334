@@ -12,6 +12,8 @@
 #define PORT 3000
 const int BUFFER_SIZE = 1024;
 
+int words_per_packet = 2;
+
 std::vector<std::string> words;
 void loadWords(const std::string &filename)
 {
@@ -38,6 +40,7 @@ void handleClient(int client_socket)
         // Converts the received string (assumed to be a number) to an integer.
         // This offset represents the starting position in the word list requested by the client.
         int offset = std::stoi(buffer);
+        std::cout << "offset is " << offset << std::endl;
         // Checks if the requested offset is beyond the end of the word list
         if (offset >= words.size())
         {
@@ -47,12 +50,29 @@ void handleClient(int client_socket)
         // If the offset is valid, enter this block to send words to the client
         else
         {
+
             std::cout << "Sending data to client" << std::endl;
             // Loops up to 10 times or until the end of the word list is reached
-            for (int i = 0; i < 10 && offset + i < words.size(); ++i)
+            for (int i = 0; offset + i < words.size(); )
             {
                 // Prepares a response string with a word and a newline character
-                std::string response = words[offset + i] + "\n";
+                std::string response;
+
+                for (int j = 0; j < words_per_packet && offset + i < words.size(); j++, i++)
+                {
+                    response = response + words[offset + i];
+                    response = response + ",";
+                }
+
+                // End of packet
+                if (!response.empty())
+                {
+                    response.pop_back();
+                    response = response + "\n";
+                }
+
+                std::cout << response;
+
                 // Sends the response string to the client.
                 send(client_socket, response.c_str(), response.length(), 0);
             }
