@@ -184,7 +184,6 @@ void request(int client_sock_fd)
             exit(EXIT_FAILURE);
         }
 
-        std::cout << buffer << std::endl;
         // if offset is greater than number of words or failure to read
         if (valread <= 0 || strcmp(buffer, "$$\n") == 0)
         {
@@ -261,6 +260,8 @@ void client()
 
     // Print the fequency of words
     print_word_freq();
+
+    std::cout << "Server disconnected" << std::endl;
 }
 
 int main()
@@ -271,6 +272,7 @@ int main()
 
     // Create a client
     client();
+
 
     return 0;
 }
