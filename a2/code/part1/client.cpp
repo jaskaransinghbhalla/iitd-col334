@@ -1,4 +1,7 @@
-// https://medium.com/@togunchan/getting-started-with-socket-programming-on-macos-building-a-simple-tcp-server-in-c-c39c06df3749
+// Client
+
+// Packages
+#include "json.hpp"
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cstring>
@@ -11,25 +14,20 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "json.hpp"
 
 // Global variables
-const int BUFFER_SIZE = 1024;
-int offset;
+int num_clients = 1;
+int num_word_per_request;
+int offset = 0;
 int port;
 int words_per_packet;
-std::map<std::string, int> wordFrequency;
 std::string ip_address;
+std::string output_file = "output.txt";
+std::map<std::string, int> wordFrequency;
 
-/**
- * Reads the configuration from the "config.json" file.
- *
- * This function opens the "config.json" file and parses its contents as JSON.
- * It retrieves the server port, server IP address, offset, and words per packet
- * from the JSON and assigns them to the corresponding variables.
- *
- * @throws nlohmann::json::exception if there is an error parsing the JSON.
- */
+// Constants
+const int BUFFER_SIZE = 1024;
+
 void read_config()
 {
     try
@@ -40,9 +38,10 @@ void read_config()
         file >> config;
 
         // Access data from the JSON
-        port = config["server_port"];
         ip_address = config["server_ip"];
-        offset = config["k"];
+        num_clients = config["num_clients"];
+        num_word_per_request = config["k"];
+        port = config["server_port"];
         words_per_packet = config["p"];
     }
     catch (nlohmann::json::exception &e)
@@ -91,9 +90,10 @@ int connect_to_server()
     }
 
     // Connected to server successfully
-    std::cout << "Connected to server" << std::endl;
+    std::cout << "Connected to server : " << ip_address << ":" << port << std::endl;
     return client_sock_fd;
 }
+
 void count_word(const std::string &word)
 {
     std::string s = "";
@@ -104,33 +104,21 @@ void count_word(const std::string &word)
     }
 }
 
-std::string process_packet(std::string packet_data)
+std::string process_packet(const std::string &packet_data)
 {
-
     std::vector<std::string> words;
     std::istringstream iss(packet_data);
-    std::string token;
+    std::string word;
 
-    while (iss.good())
+    while (std::getline(iss, word, ','))
     {
-        if (std::getline(iss, token, ','))
+        // Remove leading/trailing whitespace
+        word.erase(0, word.find_first_not_of(" \t\n\r\f\v"));
+        word.erase(word.find_last_not_of(" \t\n\r\f\v") + 1);
+
+        if (!word.empty())
         {
-            // Remove commas from token
-            token.erase(std::remove(token.begin(), token.end(), ','), token.end());
-
-            // Further split by newline if present
-            std::istringstream line_stream(token);
-            std::string subtoken;
-            while (std::getline(line_stream, subtoken))
-            {
-                // Remove commas from subtoken
-                subtoken.erase(std::remove(subtoken.begin(), subtoken.end(), ','), subtoken.end());
-
-                if (!subtoken.empty())
-                {
-                    words.push_back(subtoken);
-                }
-            }
+            words.push_back(word);
         }
     }
 
@@ -139,34 +127,23 @@ std::string process_packet(std::string packet_data)
         count_word(w);
     }
 
-    if (!words.empty())
-    {
-        std::string lastWord = words.back();
-        return lastWord;
-    }
-    else
-    {
-        return ""; // Return empty string if no words were found
-    }
+    return words.empty() ? "" : words.back();
 }
 
-void request(int client_sock_fd)
+void request_words(int client_sock_fd)
 {
     // Buffer array to read
     char buffer[BUFFER_SIZE] = {0};
-
-    // Last word
     std::string lastWord;
-    bool endOfFile = false;
-
+    bool eof = false;
     // Send the requests until u recieve an EOF
-    while (!endOfFile)
+    while (true)
     {
         // Clear the buffer
-        memset(buffer, 0, BUFFER_SIZE);
+        // memset(buffer, 0, BUFFER_SIZE);
 
         // Converting offset to the required api level syntax
-        std::string request = std::to_string(offset) + "\n";
+        std::string req_payload = std::to_string(offset) + "\n";
 
         // Sending the request
 
@@ -174,41 +151,70 @@ void request(int client_sock_fd)
         // request.c_str(): This is the second argument. It's the buffer containing the data to be sent. Here, request appears to be a string object (likely std::string), and c_str() returns a pointer to a null-terminated character array (C-style string) containing the string's data.
         // request.length(): This is the third argument, specifying the number of bytes to send from the buffer. It's using the length() method of the string object to get the exact length of the string.
         // 0: This is the fourth argument, which represents flags. In this case, no special flags are being used (0 means default behavior).
-        if (send(client_sock_fd, request.c_str(), request.length(), 0) < -1)
+        if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) < -1)
         {
             perror("Client request failed");
             exit(EXIT_FAILURE);
         }
+        // std ::cout << "Request sent : " << req_payload << std::endl;
 
-        // Read a packet into buffer
-        int valread = read(client_sock_fd, buffer, BUFFER_SIZE);
-        if (valread < 0)
+        // Invalid Offset
+        if (strcmp(buffer, "$$\n") == 0)
         {
-            perror("Error reading from server");
-            exit(EXIT_FAILURE);
-        }
-
-        // if offset is greater than number of words or failure to read
-        if (valread <= 0 || strcmp(buffer, "$$\n") == 0)
-        {
-            endOfFile = true;
             break;
         }
 
-        // Process a packet
-        std::string packet_data(buffer);
-        std::string last_word = process_packet(packet_data);
-        // packet_data.pop_back(); // Remove newline
+        // Valid Offset
 
-        // std::cout << word << std::endl;
-        if (last_word == "EOF")
+        // Reading a packet
+        int word_count = 0;
+        std::string last_word;
+        std::string accumulated_data;
+        while (word_count < num_word_per_request)
         {
-            endOfFile = true;
-            break;
+            char buffer_temp[2] = {0}; // 2 bytes
+            memset(buffer_temp, 0, 2);
+
+            int valread = recv(client_sock_fd, buffer_temp, 1, 0);
+
+            if (valread < 0)
+            {
+                perror("Error reading from server");
+                exit(EXIT_FAILURE);
+            }
+
+            if (*buffer_temp == '\n')
+            {
+                // std::cout << "Packet received" << std::endl;
+                // std ::cout << "Received : " << accumulated_data << std::endl;
+                last_word = process_packet(accumulated_data);
+                // std ::cout << "Last word is " << last_word << std::endl;
+
+                // Check for EOF
+                std::string s = "";
+                s += EOF;
+                if (last_word == s)
+                {
+                    eof = true;
+                    break;
+                }
+
+                word_count += words_per_packet;
+                accumulated_data = "";
+            }
+            else
+            {
+                accumulated_data += buffer_temp[0];
+            }
+
+        }
+        if (!eof)
+        {
+            offset += num_word_per_request;
         }
         else
         {
-            offset += words_per_packet;
+            break;
         }
     }
 
@@ -238,7 +244,7 @@ void write_with_of_stream(const std::string &filename, const std::string &conten
 
 void print_word_freq()
 {
-    write_with_of_stream("output.txt", "", false);
+    write_with_of_stream(output_file, "", false);
     std::vector<std::pair<std::string, int>> pairs;
     for (const auto &item : wordFrequency)
     {
@@ -250,7 +256,7 @@ void print_word_freq()
     {
         std::string result = pair.first + ",";
         result += std::to_string(pair.second) + '\n';
-        write_with_of_stream("output.txt", result, true);
+        write_with_of_stream(output_file, result, true);
     }
 }
 
@@ -260,16 +266,15 @@ void client()
     int client_sock_fd = connect_to_server();
 
     // Send a request for words to a client
-    request(client_sock_fd);
+    request_words(client_sock_fd);
 
     // Print the fequency of words
     print_word_freq();
 
-    std::cout << "Server disconnected" << std::endl;
+    std::cout << "Disconnect Server" << std::endl;
 }
 
 int main()
-
 {
     // read config.json
     read_config();

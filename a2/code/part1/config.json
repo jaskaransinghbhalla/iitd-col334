@@ -1,8 +1,8 @@
 {
+    "input_file": "words_fruits.txt",
+    "k": 10,
+    "num_clients": 1,
+    "p": 4,
     "server_ip": "127.0.0.1",
-    "server_port": 3000,
-    "k": 0,
-    "p": 1,
-    "input_file": "input.txt",
-    "num_clients": 5
+    "server_port": 3000
 }
