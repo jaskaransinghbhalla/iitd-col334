@@ -16,6 +16,7 @@
 // global variables
 int port;
 std::string ip_address;
+std::string output_file;
 int offset;
 int words_per_packet;
 const int BUFFER_SIZE = 1024;
@@ -234,7 +235,7 @@ void write_with_of_stream(const std::string &filename, const std::string &conten
 
 void print_word_freq()
 {
-    write_with_of_stream("output.txt", "", false);
+    write_with_of_stream(output_file, "", false);
     std::vector<std::pair<std::string, int>> pairs;
     for (const auto &item : wordFrequency)
     {
@@ -246,7 +247,7 @@ void print_word_freq()
     {
         std::string result = pair.first + ",";
         result += std::to_string(pair.second) + '\n';
-        write_with_of_stream("output.txt", result, true);
+        write_with_of_stream(output_file, result, true);
     }
 }
 
@@ -264,15 +265,17 @@ void client()
     std::cout << "Server disconnected" << std::endl;
 }
 
-int main()
+int main(int argc, char *argv[])
 
 {
     // Read config files
     read_config();
+    int client_id = std::stoi(argv[1]);
+    std::string s = to_string(client_id);
+    output_file = "output_" + s;
 
     // Create a client
     client();
-
 
     return 0;
 }
