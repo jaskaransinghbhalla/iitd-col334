@@ -1,6 +1,7 @@
 // Server
 
 // Packages
+#include "json.hpp"
 #include <arpa/inet.h>  // Provides functions for manipulating IP addresses (like inet_addr)
 #include <fstream>      // Provides file stream classes for reading/writing files
 #include <iostream>     // Provides input/output stream objects like cin, cout, cerr
@@ -8,15 +9,18 @@
 #include <netinet/in.h> // Provides Internet address family structures and constants
 #include <sys/socket.h> // Includes core functions and structures for socket programming
 #include <unistd.h>     // Provides POSIX operating system API like close()
-#include "json.hpp"
-// read from config
+
+// Read from file
 int port;
+int num_clients = 1;
+int words_per_packet;
+int num_word_per_request;
 std::string input_file;
 std::string ip_address;
-int words_per_packet;
-
-const int BUFFER_SIZE = 1024;
 std::vector<std::string> words;
+
+// Constants
+const int BUFFER_SIZE = 1024;
 
 void read_config()
 {
@@ -28,11 +32,12 @@ void read_config()
         file >> config;
 
         // Access data from the JSON
-        port = config["server_port"];
-        ip_address = config["server_ip"];
         input_file = config["input_file"];
+        ip_address = config["server_ip"];
+        num_clients = config["num_clients"];
+        num_word_per_request = config["k"];
+        port = config["server_port"];
         words_per_packet = config["p"];
-
     }
     catch (nlohmann::json::exception &e)
     {
@@ -40,21 +45,27 @@ void read_config()
     }
 }
 
-void loadWords(const std::string &filename)
+void read_words()
 {
-    std::ifstream file(filename);
+    std::ifstream file(input_file);
     std::string word;
+    // Read from the input stream file until it encounters the delimiter ',' (
     while (std::getline(file, word, ','))
     {
         words.push_back(word);
     }
-    words.push_back("EOF");
+
+    // Add EOF to the end of the word list
+    std::string s = "";
+    s += EOF;
+    words.push_back(s);
 }
 
-void handleClient(int client_socket)
+void handle_client(int client_socket)
 {
     char buffer[BUFFER_SIZE] = {0};
-    while (true)
+    int total_words_sent = 0;
+    while (total_words_sent != words.size())
     {
         // It fills the first BUFFER_SIZE bytes of the memory area pointed to by buffer with zeros.
         memset(buffer, 0, BUFFER_SIZE);
@@ -70,6 +81,7 @@ void handleClient(int client_socket)
         // std::cout << "offset is " << offset << std::endl;
         // Checks if the requested offset is beyond the end of the word list
 
+        // Invalid Offset
         if (offset >= words.size())
         {
             // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
@@ -77,39 +89,60 @@ void handleClient(int client_socket)
             break;
         }
 
-        // If the offset is valid, enter this block to send words to the client
-        else
+        // Valid offset
+        // Stream
+        bool eof = false;
+
+        for (int word_count = 0; word_count < num_word_per_request && !eof;)
+
         {
-
-            // std::cout << "Sending data to client" << std::endl;
-            // Loops up to 10 times or until the end of the word list is reached
-            // for (int i = 0; offset + i < words.size();)
-            // {
-            // Prepares a response string with a word and a newline character
-
-            std::string response;
-            for (int j = 0; j < words_per_packet && offset + j < words.size(); j++)
+            // Packet
+            std::string packet;
+            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++, total_words_sent++)
             {
-                response = response + words[offset + j];
-                response = response + ",";
+                std::string word = words[offset + word_count];
+                packet += word;
+                packet += ",";
+
+                std::string s = "";
+                s += EOF;
+                if (word == s)
+                {
+                    eof = true;
+                    break;
+                }
             }
+            packet.pop_back();
+            packet = packet + "\n";
 
-            // End of packet
-            if (!response.empty())
-            {
-                response.pop_back();
-                response = response + "\n";
-            }
+            // Send the packet to the client
+            send(client_socket, packet.c_str(), packet.length(), 0);
 
-            // std::cout << response;
-
-            // Sends the response string to the client.
-            send(client_socket, response.c_str(), response.length(), 0);
-            // }
+            // std::cout << "Packet sent" << std::endl;
+            // std::cout << "Sent : " << packet.c_str();
         }
+        // std::cout << "Words Sents : " << total_words_sent << std::endl;
     }
     close(client_socket);
-    std::cout << "Connection closed" << std::endl;
+    std::cout << "Client Disconnected" << std::endl;
+}
+
+void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
+{
+    for (int i = 0; i < num_clients; i++)
+    {
+        // Accepting the client
+        int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len));
+        if (client_socket < 0)
+        {
+            perror("accept failed");
+            exit(EXIT_FAILURE);
+        }
+        std::cout << "Client connected" << std::endl;
+
+        // Handling the client
+        handle_client(client_socket);
+    }
 }
 
 void server()
@@ -178,22 +211,12 @@ void server()
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
-    std::cout << "Server listening on port " << port << std::endl;
+    std::cout << "Server listening on :" << ip_address << ":" << port << std::endl;
 
-    int client_socket;
-
-    while (true)
-    {
-        if ((client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), (socklen_t *)&address_len)) < 0)
-        {
-            perror("accept");
-            exit(EXIT_FAILURE);
-        }
-
-        std::cout << "Client connected" << std::endl;
-        handleClient(client_socket);
-    }
+    // hanlde clients
+    handle_clients(server_socket_fd, address, address_len);
     close(server_socket_fd);
+    return;
 }
 
 int main()
@@ -203,9 +226,8 @@ int main()
     read_config();
 
     // Loading the words from the file
-    loadWords(input_file);
+    read_words();
 
-    // Create a server
+    // Initiazling the server and start handling client requests
     server();
-    return 0;
 }
