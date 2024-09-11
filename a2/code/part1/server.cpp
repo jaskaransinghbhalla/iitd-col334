@@ -8,7 +8,7 @@
 #include <netinet/in.h> // Provides Internet address family structures and constants
 #include <sys/socket.h> // Includes core functions and structures for socket programming
 #include <unistd.h>     // Provides POSIX operating system API like close()
-
+#include "json.hpp"
 // read from config
 int port;
 std::string input_file;
@@ -20,22 +20,23 @@ std::vector<std::string> words;
 
 void read_config()
 {
-    // open config as txt
-    std::ifstream config_file("config_server.txt");
+    try
+    {
+        // Open the config file
+        std::ifstream file("config.json");
+        nlohmann::json config;
+        file >> config;
 
-    if (config_file.is_open())
-    {
-        // Read the values from the file
-        config_file >> port;
-        config_file >> ip_address;
-        config_file >> input_file;
-        config_file >> words_per_packet;
-        // Close the file
-        config_file.close();
+        // Access data from the JSON
+        port = config["server_port"];
+        ip_address = config["server_ip"];
+        input_file = config["input_file"];
+        words_per_packet = config["p"];
+
     }
-    else
+    catch (nlohmann::json::exception &e)
     {
-        std::cerr << "Unable to open config.txt" << std::endl;
+        std::cerr << "JSON parsing error: " << e.what() << std::endl;
     }
 }
 

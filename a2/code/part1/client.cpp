@@ -1,5 +1,4 @@
 // https://medium.com/@togunchan/getting-started-with-socket-programming-on-macos-building-a-simple-tcp-server-in-c-c39c06df3749
-
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cstring>
@@ -12,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "json.hpp"
 
 // global variables
 int port;
@@ -25,27 +25,24 @@ std::map<std::string, int> wordFrequency;
 
 void read_config()
 {
-    // Open the config file
-    std::ifstream config_file("config_client.txt");
-
-    if (config_file.is_open())
+    try
     {
-        // Read the values from the file
-        config_file >> port;
-        config_file >> ip_address;
-        config_file >> offset;
-        config_file >> words_per_packet;
+        // Open the config file
+        std::ifstream file("config.json");
+        nlohmann::json config;
+        file >> config;
 
-        // Close the file
-        config_file.close();
+        // Access data from the JSON
+        port = config["server_port"];
+        ip_address = config["server_ip"];
+        offset = config["k"];
+        words_per_packet = config["p"];
 
-        // Print the values to verify
-        std::cout << "Port: " << port << std::endl;
-        std::cout << "IP Address: " << ip_address << std::endl;
+        // input = config["input_file"];
     }
-    else
+    catch (nlohmann::json::exception &e)
     {
-        std::cerr << "Unable to open config.txt" << std::endl;
+        std::cerr << "JSON parsing error: " << e.what() << std::endl;
     }
 }
 
@@ -272,7 +269,6 @@ int main()
 
     // Create a client
     client();
-
 
     return 0;
 }

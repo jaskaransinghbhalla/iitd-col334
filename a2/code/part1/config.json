@@ -1,0 +1,8 @@
+{
+    "server_ip": "127.0.0.1",
+    "server_port": 3000,
+    "k": 10,
+    "p": 1,
+    "input_file": "input.txt",
+    "num_clients": 5
+}
