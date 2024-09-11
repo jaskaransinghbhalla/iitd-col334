@@ -13,16 +13,23 @@
 #include <unistd.h>
 #include "json.hpp"
 
-// global variables
-int port;
-std::string ip_address;
-int offset;
-int words_per_packet;
+// Global variables
 const int BUFFER_SIZE = 1024;
-
-// Word Frequency map
+int offset;
+int port;
+int words_per_packet;
 std::map<std::string, int> wordFrequency;
+std::string ip_address;
 
+/**
+ * Reads the configuration from the "config.json" file.
+ *
+ * This function opens the "config.json" file and parses its contents as JSON.
+ * It retrieves the server port, server IP address, offset, and words per packet
+ * from the JSON and assigns them to the corresponding variables.
+ *
+ * @throws nlohmann::json::exception if there is an error parsing the JSON.
+ */
 void read_config()
 {
     try
@@ -37,8 +44,6 @@ void read_config()
         ip_address = config["server_ip"];
         offset = config["k"];
         words_per_packet = config["p"];
-
-        // input = config["input_file"];
     }
     catch (nlohmann::json::exception &e)
     {
@@ -91,7 +96,9 @@ int connect_to_server()
 }
 void count_word(const std::string &word)
 {
-    if (word != "\n" && word != "EOF") // check this exactly
+    std::string s = "";
+    s += EOF;
+    if (word != "\n" && word != s) // check this exactly
     {
         wordFrequency[word]++;
     }
@@ -264,11 +271,9 @@ void client()
 int main()
 
 {
-    // Read config files
+    // read config.json
     read_config();
 
-    // Create a client
+    // create a client
     client();
-
-    return 0;
 }

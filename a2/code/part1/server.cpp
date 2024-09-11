@@ -32,7 +32,6 @@ void read_config()
         ip_address = config["server_ip"];
         input_file = config["input_file"];
         words_per_packet = config["p"];
-
     }
     catch (nlohmann::json::exception &e)
     {
@@ -48,7 +47,9 @@ void loadWords(const std::string &filename)
     {
         words.push_back(word);
     }
-    words.push_back("EOF");
+    std::string s = "";
+    s += EOF;
+    words.push_back(s);
 }
 
 void handleClient(int client_socket)
