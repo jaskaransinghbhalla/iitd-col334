@@ -1,5 +1,4 @@
 // https://medium.com/@togunchan/getting-started-with-socket-programming-on-macos-building-a-simple-tcp-server-in-c-c39c06df3749
-
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cstring>
@@ -12,13 +11,14 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include "json.hpp"
 
 // global variables
 int port;
 std::string ip_address;
-std::string output_file;
 int offset;
 int words_per_packet;
+int num_clients;
 const int BUFFER_SIZE = 1024;
 
 // Word Frequency map
@@ -26,27 +26,25 @@ std::map<std::string, int> wordFrequency;
 
 void read_config()
 {
-    // Open the config file
-    std::ifstream config_file("config_client.txt");
-
-    if (config_file.is_open())
+    try
     {
-        // Read the values from the file
-        config_file >> port;
-        config_file >> ip_address;
-        config_file >> offset;
-        config_file >> words_per_packet;
+        // Open the config file
+        std::ifstream file("config.json");
+        nlohmann::json config;
+        file >> config;
 
-        // Close the file
-        config_file.close();
+        // Access data from the JSON
+        port = config["server_port"];
+        ip_address = config["server_ip"];
+        offset = config["k"];
+        words_per_packet = config["p"];
+        num_clients = config["num_clients"];
 
-        // Print the values to verify
-        std::cout << "Port: " << port << std::endl;
-        std::cout << "IP Address: " << ip_address << std::endl;
+        // input = config["input_file"];
     }
-    else
+    catch (nlohmann::json::exception &e)
     {
-        std::cerr << "Unable to open config.txt" << std::endl;
+        std::cerr << "JSON parsing error: " << e.what() << std::endl;
     }
 }
 
@@ -235,7 +233,7 @@ void write_with_of_stream(const std::string &filename, const std::string &conten
 
 void print_word_freq()
 {
-    write_with_of_stream(output_file, "", false);
+    write_with_of_stream("output.txt", "", false);
     std::vector<std::pair<std::string, int>> pairs;
     for (const auto &item : wordFrequency)
     {
@@ -247,7 +245,7 @@ void print_word_freq()
     {
         std::string result = pair.first + ",";
         result += std::to_string(pair.second) + '\n';
-        write_with_of_stream(output_file, result, true);
+        write_with_of_stream("output.txt", result, true);
     }
 }
 
@@ -265,14 +263,11 @@ void client()
     std::cout << "Server disconnected" << std::endl;
 }
 
-int main(int argc, char *argv[])
+int main()
 
 {
     // Read config files
     read_config();
-    int client_id = std::stoi(argv[1]);
-    std::string s = to_string(client_id);
-    output_file = "output_" + s;
 
     // Create a client
     client();
