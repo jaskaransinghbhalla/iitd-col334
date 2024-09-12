@@ -1,0 +1,24 @@
+apple,11
+banana,8
+cherry,8
+date,6
+elderberry,6
+fig,6
+grape,6
+honeydew,3
+kiwi,3
+lemon,3
+mango,3
+nectarine,3
+orange,3
+papaya,3
+quince,3
+raspberry,3
+strawberry,3
+tangerine,3
+ugli fruit,3
+vanilla bean,3
+watermelon,3
+xigua,3
+yellow watermelon,3
+zucchini,3

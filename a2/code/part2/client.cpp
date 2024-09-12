@@ -7,6 +7,7 @@
 #include <pthread.h>     // POSIX threads
 #include <unistd.h>      // POSIX operating system API
 #include <vector>        // Vector
+#include <chrono>        // Add this for timing functionality
 
 int num_clients;          // Number of clients to be created
 int num_word_per_request; // K
@@ -78,7 +79,16 @@ void handle_clients(int num_clients) // Create threads for num clients
 
 int main()
 {
+    // Timing
+    auto start_time = std::chrono::high_resolution_clock::now(); // Start timing
+
     read_config();               // Read configuration file
     handle_clients(num_clients); // Create threads for num clients
-    return 0;                    // Exit the program
+
+    // Timing
+    auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
+    std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;          // Log the duration
+
+    return 0; // Exit the program
 }

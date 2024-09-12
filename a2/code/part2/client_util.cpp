@@ -120,7 +120,7 @@ void request_words(int client_sock_fd, ClientInfo *client_info)
             if (*buffer_temp == '\n')
             {
                 std::string last_word = process_packet(accumulated_data, client_info->wordFrequency);
-                std::cout << "Client " << client_info->client_id << " " << accumulated_data << " words." << std::endl;
+                // std::cout << "Client " << client_info->client_id << " " << accumulated_data << " words." << std::endl;
                 std::string s = "";
                 s += EOF;
                 if (last_word == s)
@@ -180,7 +180,7 @@ void print_word_freq(const ClientInfo *client_info)
     {
         pairs.push_back(item);
     }
-    
+
     std::sort(pairs.begin(), pairs.end());
 
     for (const auto &pair : pairs)

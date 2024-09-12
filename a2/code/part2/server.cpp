@@ -8,7 +8,8 @@
 #include <netdb.h>      // Provides functions for network address and service translation
 #include <netinet/in.h> // Provides Internet address family structures and constants
 #include <sys/socket.h> // Includes core functions and structures for socket programming
-#include <unistd.h>     // Provides POSIX operating system API like close()
+#include <unistd.h>     // Provides access to the POSIX operating system API
+#include <pthread.h>    // Provides functions for creating and managing threads
 
 // Read from file
 int port;
@@ -21,6 +22,11 @@ std::vector<std::string> words;
 
 // Constants
 const int BUFFER_SIZE = 1024;
+
+struct thread_data
+{
+    int client_socket;
+};
 
 void read_config()
 {
@@ -90,15 +96,12 @@ void handle_client(int client_socket)
         }
 
         // Valid offset
-        // Stream
         bool eof = false;
-
-        for (int word_count = 0; word_count < num_word_per_request && !eof;)
-
+        for (int word_count = 0; word_count < num_word_per_request && !eof;) // Loop to send the requested words to the client
         {
-            // Packet
-            std::string packet;
-            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++, total_words_sent++)
+
+            std::string packet; // Packet to be sent to the client
+            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++)
             {
                 std::string word = words[offset + word_count];
                 packet += word;
@@ -112,38 +115,86 @@ void handle_client(int client_socket)
                     break;
                 }
             }
-            packet.pop_back();
-            packet = packet + "\n";
-
-            // Send the packet to the client
-            send(client_socket, packet.c_str(), packet.length(), 0);
-
-            // std::cout << "Packet sent" << std::endl;
-            // std::cout << "Sent : " << packet.c_str();
+            packet.pop_back();                                       // Remove the last comma
+            packet = packet + "\n";                                  // Add a newline character at the end of the packet
+            send(client_socket, packet.c_str(), packet.length(), 0); // Send the packet to the client
         }
-        // std::cout << "Words Sents : " << total_words_sent << std::endl;
     }
-    close(client_socket);
-    std::cout << "Client Disconnected" << std::endl;
 }
 
+// Thread function
+void *handle_client_thread(void *arg)
+{
+    struct thread_data *data = (struct thread_data *)arg;
+    std::cout << "Client Connected" << std::endl;
+    handle_client(data->client_socket);
+    close(data->client_socket);
+    std::cout << "Client Disconnected" << std::endl;
+    delete data;
+    pthread_exit(NULL);
+}
+
+// Concurrent
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
+    std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
+
+    // Loop to accept multiple clients
     for (int i = 0; i < num_clients; i++)
     {
-        // Accepting the client
-        int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len));
-        if (client_socket < 0)
+        int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
+        if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
         {
             perror("accept failed");
             exit(EXIT_FAILURE);
         }
-        std::cout << "Client connected" << std::endl;
 
-        // Handling the client
-        handle_client(client_socket);
+        // Client
+        struct thread_data *data = new thread_data; // Create thread data
+        data->client_socket = client_socket;        // Assign the client socket to the thread data
+
+        int rc = pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
+        if (rc)
+        {
+            std::cerr << "Error creating thread: " << rc << std::endl;
+            delete data;
+            close(client_socket);
+        }
     }
+
+    // Wait for all threads to complete
+    for (int i = 0; i < num_clients; i++)
+    {
+        pthread_join(threads[i], NULL);
+    }
+
+    return;
 }
+
+// Sequential
+
+// void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
+// {
+//     std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
+
+//     // Loop to accept multiple clients
+//     for (int i = 0; i < num_clients; i++)
+//     {
+//         int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
+//         if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
+//         {
+//             perror("accept failed");
+//             exit(EXIT_FAILURE);
+//         }
+
+//         // Client
+//         handle_client(client_socket);
+
+//         close(client_socket);
+//     }
+
+//         return;
+// }
 
 void server()
 {
