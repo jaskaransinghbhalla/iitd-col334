@@ -70,8 +70,7 @@ void read_words()
 void handle_client(int client_socket)
 {
     char buffer[BUFFER_SIZE] = {0};
-    int total_words_sent = 0;
-    while (total_words_sent != words.size())
+    while (true)
     {
         // It fills the first BUFFER_SIZE bytes of the memory area pointed to by buffer with zeros.
         memset(buffer, 0, BUFFER_SIZE);
