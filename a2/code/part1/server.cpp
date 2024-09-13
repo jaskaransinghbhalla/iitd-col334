@@ -61,9 +61,8 @@ void read_words() // Read the words from the input file
 void handle_client(int client_socket) // Handle the client request
 {
     char buffer[BUFFER_SIZE] = {0}; // Buffer to store the data received from the client
-    int total_words_sent = 0;       // Variable to keep track of the total number of words sent to the client
 
-    while (total_words_sent != words.size())
+    while (true)
     {
         memset(buffer, 0, BUFFER_SIZE);                         // Clear the buffer
         int valread = read(client_socket, buffer, BUFFER_SIZE); // Read data from the client socket into the buffer
@@ -84,7 +83,7 @@ void handle_client(int client_socket) // Handle the client request
         {
             // Packet
             std::string packet;
-            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++, total_words_sent++)
+            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++)
             {
                 std::string word = words[offset + word_count];
                 packet += word;

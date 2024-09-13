@@ -2,7 +2,7 @@
     "input_file": "words_fruits.txt",
     "k": 10,
     "num_clients": 1,
-    "p": 4,
+    "p": 5,
     "server_ip": "127.0.0.1",
     "server_port": 3000
 }
