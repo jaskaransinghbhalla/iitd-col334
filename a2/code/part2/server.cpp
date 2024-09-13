@@ -126,10 +126,8 @@ void handle_client(int client_socket)
 void *handle_client_thread(void *arg)
 {
     struct thread_data *data = (struct thread_data *)arg;
-    std::cout << "Client Connected" << std::endl;
     handle_client(data->client_socket);
     close(data->client_socket);
-    std::cout << "Client Disconnected" << std::endl;
     delete data;
     pthread_exit(NULL);
 }
@@ -262,7 +260,7 @@ void server()
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
-    std::cout << "Server listening on :" << ip_address << ":" << port << std::endl;
+    std::cout << "Server listening on " << ip_address << ":" << port << std::endl;
 
     // hanlde clients
     handle_clients(server_socket_fd, address, address_len);

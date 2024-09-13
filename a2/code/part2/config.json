@@ -4,5 +4,5 @@
     "k": 10,
     "p": 5,
     "input_file": "input.txt",
-    "num_clients": 32
+    "num_clients": 2
 }
