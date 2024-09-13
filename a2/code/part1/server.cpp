@@ -10,11 +10,11 @@
 #include <sys/socket.h> // Includes core functions and structures for socket programming
 #include <unistd.h>     // Provides POSIX operating system API like close()
 
-// Read from file
-int port;
+// Global variables
 int num_clients = 1;
-int words_per_packet;
 int num_word_per_request;
+int port;
+int words_per_packet;
 std::string input_file;
 std::string ip_address;
 std::vector<std::string> words;
@@ -22,7 +22,7 @@ std::vector<std::string> words;
 // Constants
 const int BUFFER_SIZE = 1024;
 
-void read_config()
+void read_config() // Read the config file
 {
     try
     {
@@ -45,56 +45,42 @@ void read_config()
     }
 }
 
-void read_words()
+void read_words() // Read the words from the input file
 {
-    std::ifstream file(input_file);
-    std::string word;
-    // Read from the input stream file until it encounters the delimiter ',' (
-    while (std::getline(file, word, ','))
+    std::ifstream file(input_file);       // Open the input file
+    std::string word;                     // Variable to store the word read from the file
+    while (std::getline(file, word, ',')) // Read from the input stream file until it encounters the delimiter ','
     {
         words.push_back(word);
     }
-
-    // Add EOF to the end of the word list
-    std::string s = "";
-    s += EOF;
-    words.push_back(s);
+    std::string s = ""; // Add EOF to the end of the word list
+    s += EOF;           // EOF is a special character that marks the end of the file
+    words.push_back(s); // Add EOF to the end of the word list
 }
 
-void handle_client(int client_socket)
+void handle_client(int client_socket) // Handle the client request
 {
-    char buffer[BUFFER_SIZE] = {0};
-    int total_words_sent = 0;
+    char buffer[BUFFER_SIZE] = {0}; // Buffer to store the data received from the client
+    int total_words_sent = 0;       // Variable to keep track of the total number of words sent to the client
+
     while (total_words_sent != words.size())
     {
-        // It fills the first BUFFER_SIZE bytes of the memory area pointed to by buffer with zeros.
-        memset(buffer, 0, BUFFER_SIZE);
-
-        int valread = read(client_socket, buffer, BUFFER_SIZE);
-        if (valread <= 0)
+        memset(buffer, 0, BUFFER_SIZE);                         // Clear the buffer
+        int valread = read(client_socket, buffer, BUFFER_SIZE); // Read data from the client socket into the buffer
+        if (valread <= 0)                                       // If the read operation fails or the client disconnects
             break;
-
-        // Converts the received string (assumed to be a number) to an integer.
-        // This offset represents the starting position in the word list requested by the client.
-
-        int offset = std::stoi(buffer);
-        // std::cout << "offset is " << offset << std::endl;
-        // Checks if the requested offset is beyond the end of the word list
+        int offset = std::stoi(buffer); // Convert the buffer data to an integer to get the offset value
 
         // Invalid Offset
-        if (offset >= words.size())
+        if (offset >= words.size()) // Checks if the requested offset is beyond the end of the word list
         {
-            // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
-            send(client_socket, "$$\n", 3, 0);
+            send(client_socket, "$$\n", 3, 0); // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
             break;
         }
 
         // Valid offset
-        // Stream
-        bool eof = false;
-
+        bool eof = false; // Variable to check if the end of the file has been reached
         for (int word_count = 0; word_count < num_word_per_request && !eof;)
-
         {
             // Packet
             std::string packet;
@@ -112,52 +98,39 @@ void handle_client(int client_socket)
                     break;
                 }
             }
-            packet.pop_back();
-            packet = packet + "\n";
-
-            // Send the packet to the client
-            send(client_socket, packet.c_str(), packet.length(), 0);
-
-            // std::cout << "Packet sent" << std::endl;
-            // std::cout << "Sent : " << packet.c_str();
+            packet.pop_back();                                       // Remove the last comma from the packet
+            packet = packet + "\n";                                  // Add a newline character at the end of the packet
+            send(client_socket, packet.c_str(), packet.length(), 0); // Send the packet to the client
         }
-        // std::cout << "Words Sents : " << total_words_sent << std::endl;
     }
-    close(client_socket);
-    std::cout << "Client Disconnected" << std::endl;
 }
 
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
-    for (int i = 0; i < num_clients; i++)
+    for (int i = 0; i < num_clients; i++) // Loop to handle multiple clients
     {
-        // Accepting the client
-        int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len));
+        int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
         if (client_socket < 0)
         {
             perror("accept failed");
             exit(EXIT_FAILURE);
         }
-        std::cout << "Client connected" << std::endl;
-
-        // Handling the client
-        handle_client(client_socket);
+        std::cout << "Client connected" << std::endl;    // Client connected message
+        handle_client(client_socket);                    // Handling the client
+        close(client_socket);                            // Closing the client socket
+        std::cout << "Client Disconnected" << std::endl; // Client disconnected message
     }
 }
 
 void server()
 {
-
     // Sever Socket
 
-    // In Unix-like systems, sockets are treated as files, and each is assigned a unique file descriptor (which is just an integer).
     // - AF_INET: Indicates that the socket will use the IPv4 protocol.
     // - SOCK_STREAM: Specifies the type of socket. This type provides connection-oriented, reliable, and order-preserving data transmission.
     // - 0: This parameter specifies the protocol to be used, and TCP (the default protocol) is selected.
-    int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-
-    // Check if the socket was created successfully or not, if it is not created it should return -1
-    if (server_socket_fd == -1)
+    int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0); // Creating a socket
+    if (server_socket_fd == -1)                             // Check if the socket was created successfully or not, if it is not created it should return -1
     {
         perror("socket creation failure");
         exit(EXIT_FAILURE);
@@ -165,18 +138,12 @@ void server()
 
     // Server Address
 
-    // sockaddr_in is a structure used to represent an Internet Protocol version 4(IPv4)socket address.
-    // - sin_family: This member specifies the address family. AF_INET is used for IPv4.
-    // - sin_port: Specifies the port number as a 16-bit integer.
-    // - sin_addr.s_addr: This member holds the IP address.
-    sockaddr_in address;
-    int address_len = sizeof(address);
-    address.sin_family = AF_INET;
+    sockaddr_in address;               // sockaddr_in is a structure used to represent an Internet Protocol version 4(IPv4)socket address.
+    int address_len = sizeof(address); // - address_len: This variable stores the size of the address structure.
+    address.sin_family = AF_INET;      // - sin_family: This member specifies the address family. AF_INET is used for IPv4.
     if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
     {
-        // std::cout << ip_address;
-        // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
-        address.sin_addr.s_addr = INADDR_ANY;
+        address.sin_addr.s_addr = INADDR_ANY; // - sin_addr.s_addr: This member holds the IP address.
     }
     else
     {
@@ -186,8 +153,7 @@ void server()
             std::cerr << "Invalid address/ Address not supported" << std::endl;
         }
     }
-
-    address.sin_port = htons(port);
+    address.sin_port = htons(port); // - sin_port: Specifies the port number as a 16-bit integer.
 
     // Binding
 
@@ -213,21 +179,16 @@ void server()
     }
     std::cout << "Server listening on :" << ip_address << ":" << port << std::endl;
 
-    // hanlde clients
-    handle_clients(server_socket_fd, address, address_len);
-    close(server_socket_fd);
+    // Handling Clients
+    handle_clients(server_socket_fd, address, address_len); // Handle  clients
+    close(server_socket_fd);                                // Close the server socket
     return;
 }
 
 int main()
 
 {
-    // Reading configuration
-    read_config();
-
-    // Loading the words from the file
-    read_words();
-
-    // Initiazling the server and start handling client requests
-    server();
+    read_config(); // Reading configuration
+    read_words();  // Loading the words from the file
+    server();      // Initiazling the server and start handling client requests
 }
