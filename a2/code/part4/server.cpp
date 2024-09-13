@@ -2,14 +2,14 @@
 
 // Packages
 #include "json.hpp"
-#include <arpa/inet.h>  // Provides functions for manipulating IP addresses (like inet_addr)
-#include <fstream>      // Provides file stream classes for reading/writing files
-#include <iostream>     // Provides input/output stream objects like cin, cout, cerr
-#include <netdb.h>      // Provides functions for network address and service translation
-#include <netinet/in.h> // Provides Internet address family structures and constants
-#include <sys/socket.h> // Includes core functions and structures for socket programming
-#include <unistd.h>     // Provides access to the POSIX operating system API
-#include <pthread.h>    // Provides functions for creating and managing threads
+#include <arpa/inet.h>
+#include <fstream>
+#include <iostream>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <pthread.h>
 
 // Read from file
 int port;
@@ -23,25 +23,41 @@ std::vector<std::string> words;
 // Constants
 const int BUFFER_SIZE = 1024;
 
-// FIFO Queue
-
+// Client Threads
 struct thread_data
 {
     int client_socket;
 };
 
+// Scheduing
 int policy;
 
-// Request struct
-struct Request
+// FIFO
+struct FifoRequest
 {
     int client_socket;
     int offset;
 };
-std::queue<Request> request_queue;
+std::queue<FifoRequest> request_queue;
 pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
 std::atomic<bool> server_running(true);
+
+// Round Robin
+struct RoundRobinRequest
+{
+    int client_socket;
+    int offset;
+    int client_id;
+};
+std::queue<int> round_robin_queue;
+pthread_mutex_t round_robin_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t round_robin_cond = PTHREAD_COND_INITIALIZER;
+std::atomic<bool> round_robin_server_running(true);
+
+///////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////// Functions ////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////
 
 void read_config()
 {
@@ -82,7 +98,7 @@ void read_words()
     words.push_back(s);
 }
 
-void process_request(const Request &req)
+void process_request_fifo(const FifoRequest &req)
 {
     int client_socket = req.client_socket;
     int offset = req.offset;
@@ -133,16 +149,21 @@ void *fcfs_scheduler(void *arg)
             pthread_mutex_unlock(&queue_mutex);
             break;
         }
-        Request req = request_queue.front();
+        FifoRequest req = request_queue.front();
         request_queue.pop();
         std ::cout << "Processing request from client " << req.client_socket << " at offset " << req.offset << std::endl;
         pthread_mutex_unlock(&queue_mutex);
 
-        process_request(req);
+        process_request_fifo(req);
     }
     return NULL;
 }
-void *handle_client(void *arg)
+
+void *rr_scheduler(void *arg)
+{
+}
+
+void *handle_client_fifo(void *arg)
 {
     int client_socket = *((int *)arg);
     delete (int *)arg;
@@ -157,7 +178,7 @@ void *handle_client(void *arg)
 
         int offset = std::stoi(buffer);
 
-        Request req{client_socket, offset};
+        FifoRequest req{client_socket, offset};
         pthread_mutex_lock(&queue_mutex);
         request_queue.push(req);
         pthread_cond_signal(&queue_cond);
@@ -167,6 +188,11 @@ void *handle_client(void *arg)
     close(client_socket);
     return NULL;
 }
+
+void *handle_client_rr(void *arg)
+{
+}
+
 void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_len)
 {
     pthread_t scheduler_thread;                  // Thread for the scheduler
@@ -186,7 +212,7 @@ void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_le
         struct thread_data *data = new thread_data; // Create thread data
         data->client_socket = client_socket;        // Assign the client socket to the thread data
 
-        int rc = pthread_create(&threads[i], NULL, handle_client, (void *)data);
+        int rc = pthread_create(&threads[i], NULL, handle_client_fifo, (void *)data);
         if (rc)
         {
             std::cerr << "Error creating thread: " << rc << std::endl;
@@ -205,9 +231,11 @@ void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_le
     pthread_join(scheduler_thread, NULL);
     return;
 }
+
 void use_rr_schedule(int server_socket_fd, sockaddr_in address, int address_len)
 {
 }
+
 // Concurrent
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
@@ -216,7 +244,7 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
         std ::cout << "Using FIFO scheduling" << std::endl;
         use_fifo_schedule(server_socket_fd, address, address_len);
     }
-    else
+    else if (policy == 1)
     {
         std ::cout << "Using RR scheduling" << std::endl;
         use_rr_schedule(server_socket_fd, address, address_len);
@@ -244,14 +272,12 @@ void server()
     address.sin_family = AF_INET;
     if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
     {
-        // std::cout << ip_address;
-        // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
-        address.sin_addr.s_addr = INADDR_ANY;
+        address.sin_addr.s_addr = INADDR_ANY; // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
     }
     else
     {
-        // Otherwise, use the IP address from the config file
-        if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0)
+
+        if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0) // Otherwise, use the IP address from the config file
         {
             std::cerr << "Invalid address/ Address not supported" << std::endl;
         }
@@ -274,11 +300,11 @@ void server()
         perror("listen failed");
         exit(EXIT_FAILURE);
     }
+
     std::cout << "Server listening on " << ip_address << ":" << port << std::endl;
 
-    // hanlde clients
-    handle_clients(server_socket_fd, address, address_len);
-    close(server_socket_fd);
+    handle_clients(server_socket_fd, address, address_len); // Handling the clients
+    close(server_socket_fd);                                // Closing the server socket
     return;
 }
 
@@ -288,12 +314,17 @@ int main(int argc, char *argv[])
     read_words();  // Loading the words from the file
     server();      // Initiazling the server and start handling client requests
 
+    // Check the scheduling policy
     if (argv[0] == "fifo")
     {
         policy = 0;
     }
-    if (argv[1] == "rr")
+    else if (argv[0] == "rr")
     {
         policy = 1;
+    }
+    else if (argv[0] == "fair")
+    {
+        policy = 2;
     }
 }
