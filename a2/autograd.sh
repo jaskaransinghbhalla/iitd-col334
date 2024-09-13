@@ -6,5 +6,5 @@ zip -r  "./submission/$FOLDER_NAME" "./$FOLDER_NAME"
 cp "./submission/$FOLDER_NAME.zip" "$DEST_DIR"
 rm -rf "./$FOLDER_NAME"
 echo "Folder zipped and moved successfully."
-# ./autograd/autograd/run.sh 
-# echo "Autograd run successfully."
+./autograd/autograd/run.sh 
+echo "Autograd run successfully."

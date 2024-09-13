@@ -75,16 +75,11 @@ void handle_clients(int num_clients) // Create threads for num clients
 
 int main()
 {
-    // Timing
-    auto start_time = std::chrono::high_resolution_clock::now(); // Start timing
-
-    read_config();               // Read configuration file
-    handle_clients(num_clients); // Create threads for num clients
-
-    // Timing
+    auto start_time = std::chrono::high_resolution_clock::now();                                  // Start timing
+    read_config();                                                                                // Read configuration file
+    handle_clients(num_clients);                                                                  // Create threads for num clients
     auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
     std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;          // Log the duration
-
-    return 0; // Exit the program
+    return 0;                                                                                     // Exit the program
 }
