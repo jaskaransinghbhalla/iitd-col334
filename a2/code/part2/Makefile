@@ -9,38 +9,38 @@ LDFLAGS = -lpthread
 
 # Source files
 SERVER_SRC = server.cpp
-CLIENT_SRC = client.cpp client_util.cpp
+CLIENT_SRC = client_util.cpp client.cpp
 
 # Output executables
 SERVER_OUT = server
 CLIENT_OUT = client
 
-# Object files for multi-client program
+# Object files
+SERVER_OBJ = $(SERVER_SRC:.cpp=.o)
 CLIENT_OBJ = $(CLIENT_SRC:.cpp=.o)
 
-# Default target
-all: $(SERVER_OUT) $(CLIENT_OUT)
+# Build target
+build: $(SERVER_OUT) $(CLIENT_OUT)
 
 # Server target
-$(SERVER_OUT): $(SERVER_SRC)
-	$(CXX) $(CXXFLAGS) -o $@ $<
+$(SERVER_OUT): $(SERVER_OBJ)
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
-
-# Multi-client target
+# Client target
 $(CLIENT_OUT): $(CLIENT_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
-
-# Rule for object files
-%.o: %.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# Clean target
-clean:
-	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o
 
 # Run target for server and single client
 run: $(SERVER_OUT) $(CLIENT_OUT)
 	./$(SERVER_OUT) & ./$(CLIENT_OUT)
 
+# Plot target
+plot: plot.py
+	python3 $<
+
+# Clean target
+clean:
+	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o output*.txt plot.png
+
 # Phony targets
-.PHONY: all clean run run_multi
+.PHONY: all clean run plot
