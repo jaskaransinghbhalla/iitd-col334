@@ -23,21 +23,23 @@ std::vector<std::string> words;
 // Constants
 const int BUFFER_SIZE = 1024;
 
-// Server Status
-struct server_info
-{
-    int status = 0;
-    int client_socket;
-    int start_time;
-    int last_concurrent_request_time;
-};
+// FIFO Queue
 
 struct thread_data
 {
     int client_socket;
 };
 
-struct server_info server_info; // Server status
+// Request struct
+struct Request
+{
+    int client_socket;
+    int offset;
+};
+std::queue<Request> request_queue;
+pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
+std::atomic<bool> server_running(true);
 
 void read_config()
 {
@@ -78,89 +80,99 @@ void read_words()
     words.push_back(s);
 }
 
-void handle_client(int client_socket)
+void process_request(const Request &req)
 {
+    int client_socket = req.client_socket;
+    int offset = req.offset;
+
+    // Invalid Offset
+    if (offset >= words.size())
+    {
+        send(client_socket, "$$\n", 3, 0);
+        return;
+    }
+
+    // Valid offset
+    bool eof = false;
+    for (int word_count = 0; word_count < num_word_per_request && !eof;)
+    {
+        std::string packet;
+        for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++)
+        {
+            std::string word = words[offset + word_count];
+            packet += word + ",";
+
+            if (word.length() == 1 && word[0] == EOF)
+            {
+                eof = true;
+                break;
+            }
+        }
+        if (!packet.empty())
+        {
+            packet.pop_back(); // Remove the last comma
+            packet += "\n";
+            send(client_socket, packet.c_str(), packet.length(), 0);
+        }
+    }
+}
+
+void *fcfs_scheduler(void *arg)
+{
+    while (server_running)
+    {
+        pthread_mutex_lock(&queue_mutex);
+        while (request_queue.empty() && server_running)
+        {
+            pthread_cond_wait(&queue_cond, &queue_mutex);
+        }
+        if (!server_running && request_queue.empty())
+        {
+            pthread_mutex_unlock(&queue_mutex);
+            break;
+        }
+        Request req = request_queue.front();
+        request_queue.pop();
+        std ::cout << "Processing request from client " << req.client_socket << " at offset " << req.offset << std::endl;
+        pthread_mutex_unlock(&queue_mutex);
+
+        process_request(req);
+    }
+    return NULL;
+}
+void *handle_client(void *arg)
+{
+    int client_socket = *((int *)arg);
+    delete (int *)arg;
+
     char buffer[BUFFER_SIZE] = {0};
     while (true)
     {
-        if (server_info.status == 1)
-        {
-            // If the server is busy, sends "$$\n" to the client, indicating that the server is busy
-            server_info.last_concurrent_request_time = time(nullptr);
-            send(client_socket, "HUH!\n", 5, 0);
-            std ::cout << "Server is busy" << std::endl;
-            continue;
-        }
-        memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
+        memset(buffer, 0, BUFFER_SIZE);
         int valread = read(client_socket, buffer, BUFFER_SIZE);
         if (valread <= 0)
             break;
 
-        // Converts the received string (assumed to be a number) to an integer.
-        // This offset represents the starting position in the word list requested by the client.
-
         int offset = std::stoi(buffer);
-        // Checks if the requested offset is beyond the end of the word list
 
-        // Invalid Offset
-        if (offset >= words.size())
-        {
-            // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
-            send(client_socket, "$$\n", 3, 0);
-            break;
-        }
-
-        server_info.status = 1;
-        server_info.client_socket = client_socket;
-        server_info.start_time = time(nullptr);
-
-        // Valid offset
-        bool eof = false;
-        for (int word_count = 0; word_count < num_word_per_request && !eof;) // Loop to send the requested words to the client
-        {
-
-            std::string packet; // Packet to be sent to the client
-            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++)
-            {
-                std::string word = words[offset + word_count];
-                packet += word;
-                packet += ",";
-
-                std::string s = "";
-                s += EOF;
-                if (word == s)
-                {
-                    eof = true;
-                    break;
-                }
-            }
-            packet.pop_back();                                       // Remove the last comma
-            packet = packet + "\n";                                  // Add a newline character at the end of the packet
-            send(client_socket, packet.c_str(), packet.length(), 0); // Send the packet to the client
-        }
-        server_info.status = 0;
-        server_info.client_socket = -1;
-        server_info.start_time = 0;
+        Request req{client_socket, offset};
+        pthread_mutex_lock(&queue_mutex);
+        request_queue.push(req);
+        pthread_cond_signal(&queue_cond);
+        pthread_mutex_unlock(&queue_mutex);
     }
-}
 
-// Thread function
-void *handle_client_thread(void *arg)
-{
-    struct thread_data *data = (struct thread_data *)arg;
-    handle_client(data->client_socket);
-    close(data->client_socket);
-    delete data;
-    pthread_exit(NULL);
+    close(client_socket);
+    return NULL;
 }
-
 // Concurrent
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
-    std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
+    pthread_t scheduler_thread;                  // Thread for the scheduler
+    std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs for the clients
 
-    // Loop to accept multiple clients
-    for (int i = 0; i < num_clients; i++)
+    pthread_create(&scheduler_thread, NULL, fcfs_scheduler, NULL); // Create the scheduler thread
+    for (int i = 0; i < num_clients; i++)                          // Loop to accept multiple clients
     {
         int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
         if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
@@ -173,7 +185,7 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
         struct thread_data *data = new thread_data; // Create thread data
         data->client_socket = client_socket;        // Assign the client socket to the thread data
 
-        int rc = pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
+        int rc = pthread_create(&threads[i], NULL, handle_client, (void *)data);
         if (rc)
         {
             std::cerr << "Error creating thread: " << rc << std::endl;
@@ -187,7 +199,9 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
     {
         pthread_join(threads[i], NULL);
     }
-
+    server_running = false;
+    pthread_cond_signal(&queue_cond);
+    pthread_join(scheduler_thread, NULL);
     return;
 }
 
