@@ -30,6 +30,8 @@ struct thread_data
     int client_socket;
 };
 
+int policy;
+
 // Request struct
 struct Request
 {
@@ -165,8 +167,7 @@ void *handle_client(void *arg)
     close(client_socket);
     return NULL;
 }
-// Concurrent
-void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
+void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_len)
 {
     pthread_t scheduler_thread;                  // Thread for the scheduler
     std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs for the clients
@@ -204,16 +205,29 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
     pthread_join(scheduler_thread, NULL);
     return;
 }
+void use_rr_schedule(int server_socket_fd, sockaddr_in address, int address_len)
+{
+}
+// Concurrent
+void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
+{
+    if (policy == 0)
+    {
+        std ::cout << "Using FIFO scheduling" << std::endl;
+        use_fifo_schedule(server_socket_fd, address, address_len);
+    }
+    else
+    {
+        std ::cout << "Using RR scheduling" << std::endl;
+        use_rr_schedule(server_socket_fd, address, address_len);
+    }
+    return;
+}
 
 void server()
 {
-
     // Sever Socket
 
-    // In Unix-like systems, sockets are treated as files, and each is assigned a unique file descriptor (which is just an integer).
-    // - AF_INET: Indicates that the socket will use the IPv4 protocol.
-    // - SOCK_STREAM: Specifies the type of socket. This type provides connection-oriented, reliable, and order-preserving data transmission.
-    // - 0: This parameter specifies the protocol to be used, and TCP (the default protocol) is selected.
     int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     // Check if the socket was created successfully or not, if it is not created it should return -1
@@ -225,10 +239,6 @@ void server()
 
     // Server Address
 
-    // sockaddr_in is a structure used to represent an Internet Protocol version 4(IPv4)socket address.
-    // - sin_family: This member specifies the address family. AF_INET is used for IPv4.
-    // - sin_port: Specifies the port number as a 16-bit integer.
-    // - sin_addr.s_addr: This member holds the IP address.
     sockaddr_in address;
     int address_len = sizeof(address);
     address.sin_family = AF_INET;
@@ -251,10 +261,6 @@ void server()
 
     // Binding
 
-    // The part where we bind the socket to an IP address and a port
-    // Binding a socket means associating the socket with a specific address and port number on the local machine.
-    // It tells the operating system that you want to receive incoming connections on a specific IP address and port combination
-    // Note: If you don't bind a socket explicitly, the system will assign a random port when you start listening or connecting.
     if (bind(server_socket_fd, reinterpret_cast<sockaddr *>(&address), address_len) < 0)
     {
         perror("bind failed");
@@ -263,9 +269,6 @@ void server()
 
     // Listening
 
-    // Listening on a socket means configuring the socket to accept incoming connection requests.
-    // It prepares the socket to receive client connections, creating a queue for incoming connection requests.
-    // SOMACONN You specify a backlog parameter, which defines the maximum length of the queue for pending connections
     if (listen(server_socket_fd, SOMAXCONN) < 0)
     {
         perror("listen failed");
@@ -279,10 +282,18 @@ void server()
     return;
 }
 
-int main()
-
+int main(int argc, char *argv[])
 {
     read_config(); // Reading configuration
     read_words();  // Loading the words from the file
     server();      // Initiazling the server and start handling client requests
+
+    if (argv[0] == "fifo")
+    {
+        policy = 0;
+    }
+    if (argv[1] == "rr")
+    {
+        policy = 1;
+    }
 }
