@@ -84,19 +84,15 @@ void handle_client(int client_socket)
     int total_words_sent = 0;
     while (total_words_sent != words.size())
     {
-        // It fills the first BUFFER_SIZE bytes of the memory area pointed to by buffer with zeros.
-        memset(buffer, 0, BUFFER_SIZE);
-
         if (server_info.status == 1)
         {
             // If the server is busy, sends "$$\n" to the client, indicating that the server is busy
             server_info.last_concurrent_request_time = time(nullptr);
-            send(client_socket, "HUH!\n", 3, 0);
+            send(client_socket, "HUH!\n", 5, 0);
+            std ::cout << "Server is busy" << std::endl;
+            continue;
         }
-        server_info.status = 1;
-        server_info.client_socket = client_socket;
-        server_info.start_time = time(nullptr);
-
+        memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
         int valread = read(client_socket, buffer, BUFFER_SIZE);
         if (valread <= 0)
             break;
@@ -114,6 +110,10 @@ void handle_client(int client_socket)
             send(client_socket, "$$\n", 3, 0);
             break;
         }
+
+        server_info.status = 1;
+        server_info.client_socket = client_socket;
+        server_info.start_time = time(nullptr);
 
         // Valid offset
         bool eof = false;
@@ -138,10 +138,10 @@ void handle_client(int client_socket)
             packet.pop_back();                                       // Remove the last comma
             packet = packet + "\n";                                  // Add a newline character at the end of the packet
             send(client_socket, packet.c_str(), packet.length(), 0); // Send the packet to the client
-            server_info.status = 0;
-            server_info.client_socket = -1;
-            server_info.start_time = 0;
         }
+        server_info.status = 0;
+        server_info.client_socket = -1;
+        server_info.start_time = 0;
     }
 }
 
