@@ -63,10 +63,6 @@ void handle_clients(int num_clients) // Create threads for num clients
             std::cerr << "Error creating thread for client " << i + 1 << std::endl;
             exit(EXIT_FAILURE);
         }
-
-        // Launch clients to separate terminals
-        // std::string command = "./launch_client.sh " + std::to_string(i);
-        // system(command.c_str());
     }
 
     for (int i = 0; i < num_clients; ++i) // Wait for all threads to complete
