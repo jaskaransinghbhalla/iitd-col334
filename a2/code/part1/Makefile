@@ -37,6 +37,7 @@ plot: $(PLOT_SRC)
 # Clean target
 clean:
 	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o
+	rm plot.png
 
 # Phony targets
 .PHONY: all clean run plot
