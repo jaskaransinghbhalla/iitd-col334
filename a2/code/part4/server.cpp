@@ -32,28 +32,19 @@ struct thread_data
 // Scheduing
 int policy;
 
-// FIFO
-struct FifoRequest
+struct Request
 {
     int client_socket;
     int offset;
 };
-std::queue<FifoRequest> request_queue;
-pthread_mutex_t queue_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t queue_cond = PTHREAD_COND_INITIALIZER;
-std::atomic<bool> server_running(true);
 
-// Round Robin
-struct RoundRobinRequest
-{
-    int client_socket;
-    int offset;
-    int client_id;
-};
-std::queue<int> round_robin_queue;
-pthread_mutex_t round_robin_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t round_robin_cond = PTHREAD_COND_INITIALIZER;
-std::atomic<bool> round_robin_server_running(true);
+std::queue<Request> request_queue;
+std::queue<int> client_queue;
+pthread_mutex_t request_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t request_queue_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t client_request_queue_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t client_request_queue_cond = PTHREAD_COND_INITIALIZER;
+std::atomic<bool> server_running(true);
 
 ///////////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////// Functions ////////////////////////////////////
@@ -98,7 +89,7 @@ void read_words()
     words.push_back(s);
 }
 
-void process_request_fifo(const FifoRequest &req)
+void process_request(const Request &req)
 {
     int client_socket = req.client_socket;
     int offset = req.offset;
@@ -135,32 +126,27 @@ void process_request_fifo(const FifoRequest &req)
     }
 }
 
-void *fcfs_scheduler(void *arg)
+void *scheduler(void *arg)
 {
     while (server_running)
     {
-        pthread_mutex_lock(&queue_mutex);
+        pthread_mutex_lock(&request_queue_mutex);
         while (request_queue.empty() && server_running)
         {
-            pthread_cond_wait(&queue_cond, &queue_mutex);
+            pthread_cond_wait(&request_queue_cond, &request_queue_mutex);
         }
         if (!server_running && request_queue.empty())
         {
-            pthread_mutex_unlock(&queue_mutex);
+            pthread_mutex_unlock(&request_queue_mutex);
             break;
         }
-        FifoRequest req = request_queue.front();
+        Request req = request_queue.front();
         request_queue.pop();
         std ::cout << "Processing request from client " << req.client_socket << " at offset " << req.offset << std::endl;
-        pthread_mutex_unlock(&queue_mutex);
-
-        process_request_fifo(req);
+        process_request(req);
+        pthread_mutex_unlock(&request_queue_mutex);
     }
     return NULL;
-}
-
-void *rr_scheduler(void *arg)
-{
 }
 
 void *handle_client_fifo(void *arg)
@@ -169,7 +155,7 @@ void *handle_client_fifo(void *arg)
     delete (int *)arg;
 
     char buffer[BUFFER_SIZE] = {0};
-    while (true)
+    while (true && client_socket > 0)
     {
         memset(buffer, 0, BUFFER_SIZE);
         int valread = read(client_socket, buffer, BUFFER_SIZE);
@@ -178,28 +164,68 @@ void *handle_client_fifo(void *arg)
 
         int offset = std::stoi(buffer);
 
-        FifoRequest req{client_socket, offset};
-        pthread_mutex_lock(&queue_mutex);
+        Request req{client_socket, offset};
+        pthread_mutex_lock(&request_queue_mutex);
         request_queue.push(req);
-        pthread_cond_signal(&queue_cond);
-        pthread_mutex_unlock(&queue_mutex);
+        pthread_cond_signal(&request_queue_cond);
+        pthread_mutex_unlock(&request_queue_mutex);
+    }
+    return NULL;
+}
+
+void *handle_client_rr(void *arg)
+{
+    int client_socket = *((int *)arg);
+    delete (int *)arg;
+
+    char buffer[BUFFER_SIZE] = {0};
+    while (true)
+    {
+
+        memset(buffer, 0, BUFFER_SIZE);
+        int valread = read(client_socket, buffer, BUFFER_SIZE);
+        if (valread <= 0)
+            break;
+        int offset = std::stoi(buffer);
+        // std::cout << "Client " << client_socket << " requested offset " << offset << std::endl;
+
+        Request req{client_socket, offset};
+        pthread_mutex_lock(&client_request_queue_mutex);
+        // std ::cout << "Client " << client_socket << " is in the queue" << std::endl;
+        while (client_queue.front() != client_socket && server_running && request_queue.size() > 0)
+        {
+            // std ::cout << "Client " << client_socket << " is waiting for its turn" << std::endl;
+            pthread_cond_wait(&client_request_queue_cond, &client_request_queue_mutex);
+        }
+        pthread_mutex_lock(&request_queue_mutex);
+        // std ::cout << "Client " << client_socket << " is being served" << std::endl;
+        request_queue.push(req);
+        pthread_cond_signal(&request_queue_cond);
+        pthread_mutex_unlock(&request_queue_mutex);
+        client_queue.pop();
+        client_queue.push(client_socket);
+        pthread_cond_broadcast(&client_request_queue_cond);
+        pthread_mutex_unlock(&client_request_queue_mutex);
+        if (offset >= words.size())
+        {
+            break;
+        }
     }
 
     close(client_socket);
     return NULL;
 }
 
-void *handle_client_rr(void *arg)
+// Concurrent
+void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
-}
 
-void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_len)
-{
     pthread_t scheduler_thread;                  // Thread for the scheduler
     std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs for the clients
 
-    pthread_create(&scheduler_thread, NULL, fcfs_scheduler, NULL); // Create the scheduler thread
-    for (int i = 0; i < num_clients; i++)                          // Loop to accept multiple clients
+    pthread_create(&scheduler_thread, NULL, scheduler, NULL); // Create the scheduler thread
+
+    for (int i = 0; i < num_clients; i++) // Loop to accept multiple clients
     {
         int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
         if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
@@ -211,8 +237,16 @@ void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_le
         // Client
         struct thread_data *data = new thread_data; // Create thread data
         data->client_socket = client_socket;        // Assign the client socket to the thread data
-
-        int rc = pthread_create(&threads[i], NULL, handle_client_fifo, (void *)data);
+        int rc;
+        if (policy == 0)
+        {
+            rc = pthread_create(&threads[i], NULL, handle_client_fifo, (void *)data);
+        }
+        else
+        {
+            client_queue.push(client_socket);
+            rc = pthread_create(&threads[i], NULL, handle_client_rr, (void *)data);
+        }
         if (rc)
         {
             std::cerr << "Error creating thread: " << rc << std::endl;
@@ -226,29 +260,10 @@ void use_fifo_schedule(int server_socket_fd, sockaddr_in address, int address_le
     {
         pthread_join(threads[i], NULL);
     }
+
     server_running = false;
-    pthread_cond_signal(&queue_cond);
+    pthread_cond_signal(&request_queue_cond);
     pthread_join(scheduler_thread, NULL);
-    return;
-}
-
-void use_rr_schedule(int server_socket_fd, sockaddr_in address, int address_len)
-{
-}
-
-// Concurrent
-void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
-{
-    if (policy == 0)
-    {
-        std ::cout << "Using FIFO scheduling" << std::endl;
-        use_fifo_schedule(server_socket_fd, address, address_len);
-    }
-    else if (policy == 1)
-    {
-        std ::cout << "Using RR scheduling" << std::endl;
-        use_rr_schedule(server_socket_fd, address, address_len);
-    }
     return;
 }
 
@@ -310,21 +325,40 @@ void server()
 
 int main(int argc, char *argv[])
 {
+    // Check the scheduling policy
+    try
+    {
+        policy = std::stoi(argv[1]);
+    }
+    catch (const std::invalid_argument &e)
+    {
+        std::cerr << "Invalid input. Please enter a number (0, 1, or 2)." << std::endl;
+        return 1;
+    }
+    catch (const std::out_of_range &e)
+    {
+        std::cerr << "Input out of range. Please enter 0, 1, or 2." << std::endl;
+        return 1;
+    }
+
+    std::cout << "Scheduling Policy: " << policy << std::endl;
+
+    switch (policy)
+    {
+    case 0:
+        std::cout << "FIFO" << std::endl;
+        break;
+    case 1:
+        std::cout << "Round Robin" << std::endl;
+        break;
+    case 2:
+        std::cout << "Other Policy" << std::endl;
+        break;
+    default:
+        std::cerr << "Invalid policy number. Please use 0, 1, or 2." << std::endl;
+        return 1;
+    }
     read_config(); // Reading configuration
     read_words();  // Loading the words from the file
     server();      // Initiazling the server and start handling client requests
-
-    // Check the scheduling policy
-    if (argv[0] == "fifo")
-    {
-        policy = 0;
-    }
-    else if (argv[0] == "rr")
-    {
-        policy = 1;
-    }
-    else if (argv[0] == "fair")
-    {
-        policy = 2;
-    }
 }
