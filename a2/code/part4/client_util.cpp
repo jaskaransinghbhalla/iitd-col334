@@ -198,6 +198,5 @@ void *client_thread(void *arg) // Client thread function
     request_words(client_sock_fd, client_info);                                         // Request words from server
     print_word_freq(client_info);                                                       // Print word frequency
     std::cout << "Client " << client_info->client_id << " has finished." << std::endl;  // Client Finished
-
     pthread_exit(nullptr); // Exit thread
 }

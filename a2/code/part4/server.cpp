@@ -166,6 +166,7 @@ void *handle_client_fifo(void *arg)
 
         Request req{client_socket, offset};
         pthread_mutex_lock(&request_queue_mutex);
+        std::cout << "Client " << client_socket << " requested offset " << offset << std::endl;
         request_queue.push(req);
         pthread_cond_signal(&request_queue_cond);
         pthread_mutex_unlock(&request_queue_mutex);
@@ -247,7 +248,7 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
             client_queue.push(client_socket);
             rc = pthread_create(&threads[i], NULL, handle_client_rr, (void *)data);
         }
-        if (rc)
+        if (rc < 0)
         {
             std::cerr << "Error creating thread: " << rc << std::endl;
             delete data;

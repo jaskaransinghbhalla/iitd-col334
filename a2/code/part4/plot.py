@@ -113,7 +113,7 @@ def compare_policies():
     plt.figure(figsize=(10, 6))
     plt.plot(num_clients_list, fifo_times, label="FIFO")
     plt.plot(num_clients_list, rr_times, label="Round Robin")
-    plt.xlabel("Number of tasks (n)")
+    plt.xlabel("Number of Clients (num_clients)")
     plt.ylabel("Average completion time")
     plt.title("FIFO vs Round Robin Scheduling")
     plt.legend()
