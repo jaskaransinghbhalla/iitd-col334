@@ -46,5 +46,8 @@ plot: plot.py
 clean:
 	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o output*.txt plot.png
 
+cleanall:
+	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o output*.txt
+
 # Phony targets
 .PHONY: all clean run plot
