@@ -263,6 +263,7 @@ void server()
 
     // hanlde clients
     handle_clients(server_socket_fd, address, address_len);
+    std ::cout << "Server closed" << std::endl;
     close(server_socket_fd);
     return;
 }

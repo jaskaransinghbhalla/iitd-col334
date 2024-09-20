@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <netdb.h>
+#include <chrono> // Add this for timing functionality
 #include <sstream>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -192,13 +193,24 @@ void print_word_freq(const ClientInfo *client_info)
 
 void *client_thread(void *arg) // Client thread function
 {
-    ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
-
-    std::cout << "Client " << client_info->client_id << " is starting..." << std::endl; // Client Started                                                                  // Read configuration file
-    int client_sock_fd = connect_to_server();                                           // Connect to server
-    request_words(client_sock_fd, client_info);                                         // Request words from server
-    print_word_freq(client_info);                                                       // Print word frequency
-    std::cout << "Client " << client_info->client_id << " has finished." << std::endl;  // Client Finished
+    auto start_time = std::chrono::high_resolution_clock::now();                                  // Start timing
+    ClientInfo *client_info = static_cast<ClientInfo *>(arg);                                     // Cast argument to ClientInfo pointer
+    int client_sock_fd = connect_to_server();                                                     // Connect to server
+    request_words(client_sock_fd, client_info);                                                   // Request words from server
+    print_word_freq(client_info);                                                                 // Print word frequency
+    auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
+    std::ofstream outfile("durations.txt", std::ios::app);                                        // Save duration to durations.txt
+    if (outfile.is_open())
+    {
+        std::cout << "Client " << client_info->client_id << " duration: " << duration.count() << "ms" << std::endl;
+        outfile << duration.count() << ",";
+        outfile.close();
+    }
+    else
+    {
+        std::cerr << "Error opening durations.txt" << std::endl;
+    }
 
     pthread_exit(nullptr); // Exit thread
 }

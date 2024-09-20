@@ -40,7 +40,12 @@ plot: plot.py
 
 # Clean target
 clean:
-	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o output*.txt plot.png
+	rm -f $(SERVER_OUT) $(CLIENT_OUT)
+	rm -f *.o
+	rm -f durations.txt output*.txt 
+cleanall: clean
+	rm -f plot.png
+
 
 # Phony targets
 .PHONY: all clean run plot
