@@ -130,7 +130,7 @@ void print_word_freq(const ClientInfo *client_info)
   }
 }
 
-// Slotted Aloha
+// Utility functions for Protocols
 int generate_random_integer(int x)
 {
   std::random_device rd;                     // Initialize a random device
@@ -154,6 +154,7 @@ bool should_send_request(ClientInfo *client_info)
   return false;
 }
 
+// Slotted Aloha
 void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 {
   char buffer[BUFFER_SIZE] = {0};

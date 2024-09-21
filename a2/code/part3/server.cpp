@@ -23,31 +23,30 @@ std::vector<std::string> words;
 
 // Constants
 const int BUFFER_SIZE = 1024;
+std::atomic<bool> collision_detected(false);
 
+// Server Status
 enum SERVER_STATUS
 {
   IDLE = 0,
   BUSY = 1
 };
-
-// Server Status
 struct server_info
 {
-  SERVER_STATUS status;
-  int client_socket;
-  int start_time;
-  int last_concurrent_request_time;
+  SERVER_STATUS status = IDLE;
+  int client_socket = -1;
+  int start_time = 0;
+  int last_concurrent_request_time = 0;
 };
+struct server_info server_info;
+pthread_mutex_t server_info_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t server_info_lcrt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Client Info
 struct thread_data
 {
   int client_socket;
 };
-
-pthread_mutex_t server_info_status_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t server_info_lcrt_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-struct server_info server_info = {IDLE, -1, 0, 0}; // Server status
 
 void read_config()
 {
@@ -101,32 +100,19 @@ void handle_client(int client_socket) // Basil
   char buffer[BUFFER_SIZE] = {0};
   int total_words_sent = 0;
 
-  while (total_words_sent != words.size())
+  while (total_words_sent != words.size() && !collision_detected)
   {
 
     // Check if the server is busy
-    if (pthread_mutex_lock(&server_info_status_mutex) == 0)
+    pthread_mutex_lock(&server_info_status_mutex);
+    if (server_info.last_concurrent_request_time > server_info.start_time)
     {
-      if (server_info.last_concurrent_request_time > server_info.start_time)
-      {
-        // If the server is busy, sends "$$\n" to the client, indicating that
-        // the server is busy
-        server_info.last_concurrent_request_time = get_time_in_milliseconds();
-        server_info.status = IDLE;
-        server_info.client_socket = -1;
-        server_info.start_time = 0;
-
-        if (send(client_socket, "HUH!\n", 5, 0) < -1)
-        {
-          perror("Could not send HUH");
-          exit(EXIT_FAILURE);
-        }
-        std::cout << "Server is busy" << std::endl;
-        pthread_mutex_unlock(&server_info_status_mutex);
-        break;
-      }
+      // Collision detected, stop processing
+      collision_detected = true;
       pthread_mutex_unlock(&server_info_status_mutex);
+      break;
     }
+    pthread_mutex_unlock(&server_info_status_mutex);
 
     memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
     int valread = read(client_socket, buffer, BUFFER_SIZE);
@@ -159,7 +145,6 @@ void handle_client(int client_socket) // Basil
          word_count < num_word_per_request &&
          !eof;) // Loop to send the requested words to the client
     {
-
       std::string packet; // Packet to be sent to the client
       for (int packet_count = 0; packet_count < words_per_packet &&
                                  word_count < num_word_per_request && !eof;
@@ -196,70 +181,101 @@ void handle_client(int client_socket) // Basil
 }
 
 // Thread function
-void *handle_client_thread(void *arg) // Basil
+void *handle_client_thread(void *arg)
 {
   struct thread_data *data = (struct thread_data *)arg;
+  int client_socket = data->client_socket;
+  bool is_collision = false;
 
-  // check if mutex is locked on server_info
-  // if yes, then send HUH to both clients
-  // else,
-  // lock mutex and call handle_client
+  // Try to acquire the lock
   if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
   {
+    // Successfully acquired the lock
+    if (server_info.status == IDLE)
+    {
+      // Server is idle, we can process this request
+      server_info.status = BUSY;
+      server_info.client_socket = client_socket;
+      server_info.start_time = get_time_in_milliseconds();
+      pthread_mutex_unlock(&server_info_status_mutex);
 
-    // std::cout << "" << std::endl;
-    std::cout << "Successfully locked server_info_status_mutex" << std::endl;
-    std::cout << "server info status: " << server_info.status << std::endl;
-    std::cout << "server info client socket: " << server_info.client_socket
-              << std::endl;
-    std::cout << "server info start time: " << server_info.start_time
-              << std::endl;
-    std::cout << "server info last concurrent request time: "
-              << server_info.last_concurrent_request_time << std::endl;
+      // Handle the client request
+      handle_client(client_socket);
 
-    server_info.status = BUSY;
-    // time since epoch in milliseconds
-    server_info.client_socket = data->client_socket;
-    server_info.start_time = get_time_in_milliseconds();
-    pthread_mutex_unlock(&server_info_status_mutex);
-    handle_client(data->client_socket);
-    // clean up this client socket after it has got its word by requesting
-    // server
-    close(data->client_socket);
-    delete data;
-    pthread_exit(NULL);
+      // Check if a collision occurred during handling
+      if (collision_detected)
+      {
+        is_collision = true;
+      }
+      else
+      {
+        // Reset server status after successful handling
+        pthread_mutex_lock(&server_info_status_mutex);
+        server_info.status = IDLE;
+        server_info.client_socket = -1;
+        server_info.start_time = 0;
+        pthread_mutex_unlock(&server_info_status_mutex);
+      }
+    }
+    else
+    {
+      // Server is busy, this is a collision
+      is_collision = true;
+      pthread_mutex_unlock(&server_info_status_mutex);
+    }
   }
   else
   {
+    // Couldn't acquire the lock, this is also a collision
+    is_collision = true;
+  }
 
-    if (errno == EBUSY)
+  if (is_collision)
+  {
+    // Handle collision
+    pthread_mutex_lock(&server_info_lcrt_mutex);
+    long long current_time = get_time_in_milliseconds();
+    server_info.last_concurrent_request_time = current_time;
+    pthread_mutex_unlock(&server_info_lcrt_mutex);
+
+    // Set the collision flag to stop any ongoing client handling
+    collision_detected = true;
+
+    // Send "HUH!" to the client that caused the collision
+    if (send(client_socket, "HUH!\n", 5, 0) < 0)
     {
-      pthread_mutex_lock(&server_info_lcrt_mutex);
-      server_info.last_concurrent_request_time = get_time_in_milliseconds();
-      pthread_mutex_unlock(&server_info_lcrt_mutex);
+      perror("Could not send HUH to colliding client");
+    }
 
-      // std::cout << data->client_socket << " tried to connect" << std::endl;
-      if (send(data->client_socket, "HUH!\n", 5, 0) < -1)
+    // Send "HUH!" to the client being served (if there is one)
+    pthread_mutex_lock(&server_info_status_mutex);
+    if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
+    {
+      if (send(server_info.client_socket, "HUH!\n", 5, 0) < 0)
       {
-        perror("Could not send HUH");
-        exit(EXIT_FAILURE);
+        perror("Could not send HUH to client being served");
       }
     }
+    // Reset server status
+    server_info.status = IDLE;
+    server_info.client_socket = -1;
+    server_info.start_time = 0;
+    pthread_mutex_unlock(&server_info_status_mutex);
   }
-}
 
+  // Close the client socket and clean up
+  close(client_socket);
+  delete data;
+  pthread_exit(NULL);
+}
 // Concurrent
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
   std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
-
-  // Loop to accept multiple clients
-  for (int i = 0; i < num_clients; i++)
+  for (int i = 0; i < num_clients; i++)        // Loop to accept multiple clients
   {
-    int client_socket = accept(
-        server_socket_fd, reinterpret_cast<sockaddr *>(&address),
-        reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
-    if (client_socket < 0)                            // Checking if the client socket is valid
+    int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
+    if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
     {
       perror("accept failed");
       exit(EXIT_FAILURE);
@@ -267,11 +283,8 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 
     // Client
     struct thread_data *data = new thread_data; // Create thread data
-    data->client_socket =
-        client_socket; // Assign the client socket to the thread data
-
-    int rc =
-        pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
+    data->client_socket = client_socket;        // Assign the client socket to the thread data
+    int rc = pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
     if (rc)
     {
       std::cerr << "Error creating thread: " << rc << std::endl;
