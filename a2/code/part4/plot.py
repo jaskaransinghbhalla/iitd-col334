@@ -38,7 +38,7 @@ def generate_config(num_clients):
 def compare_policies():
     run_process(["make", "server"])
     run_process(["make", "client"])
-    num_clients_list = [1, 2, 4, 8, 16]
+    num_clients_list = [1, 2, 4, 8, 12, 16, 20, 24, 28, 32]
     fifo_times = []
     rr_times = []
     for num_clients in num_clients_list:
@@ -64,7 +64,7 @@ def compare_policies():
             time.sleep(2)
             
             # Run the client
-            client_process = run_process(["./client"])
+            client_process = run_process(["./client", "0"])
             if not client_process:
                 print("Failed to start client")
                 server_process.terminate()
