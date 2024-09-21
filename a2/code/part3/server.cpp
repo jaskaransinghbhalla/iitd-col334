@@ -98,174 +98,181 @@ void read_words()
   words.push_back(s);
 }
 
-void handle_client(int client_socket) // Basil
+void handle_client_request(int client_socket) // Basil
 {
-  char buffer[BUFFER_SIZE] = {0};
-  int total_words_sent = 0;
+  pthread_mutex_lock(&server_info_status_mutex);
+  if (server_info.last_concurrent_request_time > server_info.start_time)
+  {
+    // Collision detected, stop processing
+    collision_detected = true;
+    pthread_mutex_unlock(&server_info_status_mutex);
+    return;
+  }
+  pthread_mutex_unlock(&server_info_status_mutex);
 
-  while (total_words_sent != words.size() && !collision_detected)
+  char buffer[BUFFER_SIZE] = {0};
+
+  memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
+
+  int valread = read(client_socket, buffer, BUFFER_SIZE);
+  if (valread <= 0)
+    return;
+
+  int offset = std::stoi(buffer);
+  std::cout << "Client" << client_socket << " requested offset: " << offset << std::endl;
+
+  if (offset >= words.size())
+  {
+    // If the offset is too large, sends "$$\n" to the client, indicating an
+    // invalid offset
+    if (send(client_socket, "$$\n", 3, 0) < -1)
+    {
+      perror("Could not send packet");
+      exit(EXIT_FAILURE);
+    }
+    return;
+  }
+
+  // Valid offset
+  bool eof = false;
+
+  for (int word_count = 0; word_count < num_word_per_request && !eof && !collision_detected;) // Loop to send the requested words to the client
   {
 
-    // Check if the server is busy
-    pthread_mutex_lock(&server_info_status_mutex);
-    if (server_info.last_concurrent_request_time > server_info.start_time)
+    std::string packet; // Packet to be sent to the client
+
+    for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof && !collision_detected; packet_count++, word_count++)
     {
-      // Collision detected, stop processing
-      collision_detected = true;
-      pthread_mutex_unlock(&server_info_status_mutex);
-      break;
-    }
-    pthread_mutex_unlock(&server_info_status_mutex);
+      std::string word = words[offset + word_count];
+      packet += word;
+      packet += ",";
 
-    memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
-    int valread = read(client_socket, buffer, BUFFER_SIZE);
-    if (valread <= 0)
-      break;
-
-    // Converts the received string (assumed to be a number) to an integer.
-    // This offset represents the starting position in the word list requested
-    // by the client.
-
-    int offset = std::stoi(buffer);
-    // Checks if the requested offset is beyond the end of the word list
-
-    // Invalid Offset
-    if (offset >= words.size())
-    {
-      // If the offset is too large, sends "$$\n" to the client, indicating an
-      // invalid offset
-      if (send(client_socket, "$$\n", 3, 0) < -1)
+      std::string s = "";
+      s += EOF;
+      if (word == s)
       {
-        perror("Could not send packet");
-        exit(EXIT_FAILURE);
+        eof = true;
+        break;
       }
-      break;
     }
 
-    // Valid offset
-    bool eof = false;
-    for (int word_count = 0;
-         word_count < num_word_per_request &&
-         !eof;) // Loop to send the requested words to the client
+    packet.pop_back();      // Remove the last comma
+    packet = packet + "\n"; // Add a newline character at the end of the packet
+
+    if (send(client_socket, packet.c_str(), packet.length(), 0) < -1)
     {
-      std::string packet; // Packet to be sent to the client
-      for (int packet_count = 0; packet_count < words_per_packet &&
-                                 word_count < num_word_per_request && !eof;
-           packet_count++, word_count++)
-      {
-        std::string word = words[offset + word_count];
-        packet += word;
-        packet += ",";
-
-        std::string s = "";
-        s += EOF;
-        if (word == s)
-        {
-          eof = true;
-          break;
-        }
-      }
-      packet.pop_back(); // Remove the last comma
-      packet =
-          packet + "\n"; // Add a newline character at the end of the packet
-      if (send(client_socket, packet.c_str(), packet.length(), 0) < -1)
-      {
-        perror("Could not send packet");
-        exit(EXIT_FAILURE);
-      } // Send the packet to the client
-    }
-
-    pthread_mutex_lock(&server_info_status_mutex);
-    server_info.status = IDLE;
-    server_info.client_socket = -1;
-    server_info.start_time = 0;
-    pthread_mutex_unlock(&server_info_status_mutex);
+      perror("Could not send packet");
+      exit(EXIT_FAILURE);
+    } // Send the packet to the client
   }
 }
 
-// Thread function
-void *handle_client_thread(void *arg)
+// Check if the server is busy
+
+// Converts the received string (assumed to be a number) to an integer.
+// This offset represents the starting position in the word list requested
+// by the client.
+
+// Checks if the requested offset is beyond the end of the word list
+
+// Invalid Offset
+
+void handle_client_requests(int client_socket)
 {
-  struct thread_data *data = (struct thread_data *)arg;
-  int client_socket = data->client_socket;
-  bool is_collision = false;
+  int total_words_sent = 0;
 
-  // Try to acquire the lock
-  if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
+  while (total_words_sent != words.size())
   {
-    // Successfully acquired the lock
-    if (server_info.status == IDLE)
+
+    bool is_collision = false;
+
+    if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
+    // Try to acquire the lock
     {
-      // Server is idle, we can process this request
-      server_info.status = BUSY;
-      server_info.client_socket = client_socket;
-      server_info.start_time = get_time_in_milliseconds();
-      pthread_mutex_unlock(&server_info_status_mutex);
-
-      // Handle the client request
-      handle_client(client_socket);
-
-      // Check if a collision occurred during handling
-      if (collision_detected)
+      // Successfully acquired the lock
+      if (server_info.status == IDLE)
       {
-        is_collision = true;
+        // Server is idle, we can process this request
+        server_info.status = BUSY;
+        server_info.client_socket = client_socket;
+        server_info.start_time = get_time_in_milliseconds();
+        pthread_mutex_unlock(&server_info_status_mutex);
+
+        // Handle the client request
+
+        handle_client_request(client_socket);
+
+        // Check if a collision occurred during handling
+        if (collision_detected)
+        {
+          is_collision = true;
+        }
+        else
+        {
+          // Reset server status after successful handling
+          total_words_sent += num_word_per_request;
+          pthread_mutex_lock(&server_info_status_mutex);
+          server_info.status = IDLE;
+          server_info.client_socket = -1;
+          server_info.start_time = 0;
+          pthread_mutex_unlock(&server_info_status_mutex);
+        }
       }
       else
       {
-        // Reset server status after successful handling
-        pthread_mutex_lock(&server_info_status_mutex);
-        server_info.status = IDLE;
-        server_info.client_socket = -1;
-        server_info.start_time = 0;
+        // Server is busy, this is a collision
+        is_collision = true;
         pthread_mutex_unlock(&server_info_status_mutex);
       }
     }
     else
     {
-      // Server is busy, this is a collision
+      // Couldn't acquire the lock, this is also a collision
       is_collision = true;
+    }
+
+    if (is_collision)
+    {
+      // Handle collision
+      pthread_mutex_lock(&server_info_lcrt_mutex);
+      long long current_time = get_time_in_milliseconds();
+      server_info.last_concurrent_request_time = current_time;
+      pthread_mutex_unlock(&server_info_lcrt_mutex);
+
+      // Set the collision flag to stop any ongoing client handling
+      collision_detected = true;
+
+      // Send "HUH!" to the client that caused the collision
+      send(client_socket, "HUH!\n", 5, 0);
+
+      // Send "HUH!" to the client being served (if there is one)
+      pthread_mutex_lock(&server_info_status_mutex);
+      if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
+      {
+        send(server_info.client_socket, "HUH!\n", 5, 0);
+      }
+      // Reset server status
+      server_info.status = IDLE;
+      server_info.client_socket = -1;
+      server_info.start_time = 0;
+      collision_detected = false;
+      is_collision = false;
       pthread_mutex_unlock(&server_info_status_mutex);
     }
   }
-  else
-  {
-    // Couldn't acquire the lock, this is also a collision
-    is_collision = true;
-  }
+}
 
-  if (is_collision)
-  {
-    // Handle collision
-    pthread_mutex_lock(&server_info_lcrt_mutex);
-    long long current_time = get_time_in_milliseconds();
-    server_info.last_concurrent_request_time = current_time;
-    pthread_mutex_unlock(&server_info_lcrt_mutex);
-
-    // Set the collision flag to stop any ongoing client handling
-    collision_detected = true;
-
-    // Send "HUH!" to the client that caused the collision
-    send(client_socket, "HUH!\n", 5, 0);
-
-    // Send "HUH!" to the client being served (if there is one)
-    pthread_mutex_lock(&server_info_status_mutex);
-    if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
-    {
-      send(server_info.client_socket, "HUH!\n", 5, 0);
-    }
-    // Reset server status
-    server_info.status = IDLE;
-    server_info.client_socket = -1;
-    server_info.start_time = 0;
-    pthread_mutex_unlock(&server_info_status_mutex);
-  }
-
-  // Close the client socket and clean up
+void *handle_client_thread(void *arg)
+{
+  struct thread_data *data = (struct thread_data *)arg;
+  int client_socket = data->client_socket;
+  std::cout << "Client" << client_socket << " : Thread started" << std::endl;
+  handle_client_requests(client_socket);
   close(client_socket);
   delete data;
   pthread_exit(NULL);
 }
-// Concurrent
+
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
   std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs

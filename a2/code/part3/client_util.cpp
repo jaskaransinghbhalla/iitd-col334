@@ -66,7 +66,20 @@ void count_word(const std::string &word, std::map<std::string, int> &wordFrequen
   }
 }
 
-std::string process_packet(const std::string &packet_data, std::map<std::string, int> &wordFrequency)
+std::string get_last_word(const std::string &packet_data)
+{
+  std::istringstream iss(packet_data);
+  std::string word, last_word;
+
+  while (iss >> word)
+  {
+    last_word = word;
+  }
+
+  return last_word;
+}
+
+void process_packet(const std::string &packet_data, std::map<std::string, int> &wordFrequency)
 {
   std::vector<std::string> words;
   std::istringstream iss(packet_data);
@@ -86,8 +99,9 @@ std::string process_packet(const std::string &packet_data, std::map<std::string,
   {
     count_word(w, wordFrequency);
   }
+  return;
 
-  return words.empty() ? "" : words.back();
+  // return words.empty() ? "" : words.back();
 }
 
 void write_with_of_stream(const std::string &filename, const std::string &content, bool append = false)
@@ -162,15 +176,12 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 
   while (true)
   {
+    // Request
     std::string req_payload = std::to_string(client_info->offset) + "\n";
 
-    // each ms, the client decides if it should send a request to the server, this is determined if the unix timestamp of the current time in,
-    // milliseconds is a multiple of client->time_slot_len if it is, the client,
-    // sends a request to the server
-    if (should_send_request(client_info))
+    if (should_send_request(client_info)) // Should send request
     {
-      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) <
-          -1)
+      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) < -1)
       {
         perror("Client request failed");
         exit(EXIT_FAILURE);
@@ -183,6 +194,8 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 
       int word_count = 0;
       std::string accumulated_data;
+      std::vector<std::string> packets_to_process;
+
       while (word_count < num_word_per_request)
       {
         char buffer_temp[2] = {0};
@@ -198,21 +211,34 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
         {
           if (accumulated_data == "HUH!")
           {
-            std::cout << client_sock_fd << " : Server busy, Dropping the following " << accumulated_data << std::endl;
+            std::cout << client_sock_fd << " : Server busy, Dropping the following Packets" << std::endl;
             accumulated_data = "";
-            break;
+            packets_to_process.clear();
+            continue;
           }
-          std::string last_word = process_packet(accumulated_data, client_info->wordFrequency);
+
+          packets_to_process.push_back(accumulated_data);
+          std::string last_word = get_last_word(accumulated_data);
+
           std::string s = "";
           s += EOF;
+
           if (last_word == s)
           {
+            for (const auto &packet : packets_to_process)
+            {
+              process_packet(packet, client_info->wordFrequency);
+            }
             eof = true;
             break;
           }
-
+          for (const auto &packet : packets_to_process)
+          {
+            process_packet(packet, client_info->wordFrequency);
+          }
           word_count += words_per_packet;
           accumulated_data = "";
+          packets_to_process.clear();
         }
         else
         {
