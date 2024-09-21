@@ -29,6 +29,9 @@ def run_make_process():
         return_code = process.wait()
         end_time = time.time()
         execution_time = (end_time - start_time) * 1000
+        print("exeuction time ", execution_time)
+        print("Sleeping for 15 seconds...")
+        time.sleep(15)
         return return_code, execution_time
     except subprocess.CalledProcessError as e:
         print(f"An error occurred while running 'make run': {e}")
@@ -50,8 +53,11 @@ def main():
         with open(filename, "w") as f:
             json.dump(config, f, indent=2)
 
+        print("value of p", p)
         times = []
         for i in range(10):  # Run 10 times for each p value
+            print("value of i ", i)
+
             return_code, execution_time = run_make_process()
             if execution_time is not None:
                 times.append(execution_time)

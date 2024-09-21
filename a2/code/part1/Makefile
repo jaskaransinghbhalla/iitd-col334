@@ -32,7 +32,7 @@ run: $(SERVER_OUT) $(CLIENT_OUT)
 
 # Plot target
 plot: $(PLOT_SRC)
-	python3 $<
+	python3 -u $<
 
 # Clean target
 clean:
