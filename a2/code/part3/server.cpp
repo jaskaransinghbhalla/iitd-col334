@@ -9,6 +9,7 @@
 #include <netdb.h>      // Provides functions for network address and service translation
 #include <netinet/in.h> // Provides Internet address family structures and constants
 #include <pthread.h>    // Provides functions for creating and managing threads
+#include <atomic>
 #include <sys/socket.h> // Includes core functions and structures for socket programming
 #include <unistd.h>     // Provides access to the POSIX operating system API
 
