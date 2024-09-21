@@ -4,6 +4,8 @@
 #include "json.hpp"
 #include <arpa/inet.h>
 #include <fstream>
+#include <queue>
+#include <atomic>
 #include <iostream>
 #include <netdb.h>
 #include <netinet/in.h>

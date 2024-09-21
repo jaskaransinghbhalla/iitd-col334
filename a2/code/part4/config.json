@@ -1,8 +1,8 @@
 {
   "input_file": "words.txt",
   "k": 10,
-  "num_clients": 1,
-  "p": 1,
+  "num_clients": 2,
+  "p": 10,
   "server_ip": "127.0.0.1",
   "server_port": 3000
 }

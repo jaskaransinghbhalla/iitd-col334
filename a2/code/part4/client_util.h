@@ -3,6 +3,7 @@
 
 #include <string>
 #include <map>
+#include <atomic>
 
 // Structure to hold client information
 struct ClientInfo

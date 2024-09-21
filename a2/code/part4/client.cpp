@@ -2,6 +2,7 @@
 #include "json.hpp"      // JSON library
 #include "client_util.h" // Client utility functions
 #include <cstdlib>       // C standard library
+#include <atomic>
 #include <fstream>       // File stream
 #include <iostream>      // Input/output stream
 #include <pthread.h>     // POSIX threads

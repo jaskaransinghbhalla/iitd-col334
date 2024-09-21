@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cstring>
+#include <atomic>
 #include <fstream>
 #include <iostream>
 #include <netdb.h>
