@@ -31,12 +31,12 @@ $(CLIENT_OUT): $(CLIENT_OBJ)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 # Run target for server and single client
-run-fifo: $(SERVER_OUT) $(CLIENT_OUT)
-	./$(SERVER_OUT) fifo & ./$(CLIENT_OUT)
+run-fifo: $(SERVER_OUT) $(CLIENT_OUT) 
+	./$(SERVER_OUT) 0 & ./$(CLIENT_OUT) 0
 run-rr: $(SERVER_OUT) $(CLIENT_OUT)
-	./$(SERVER_OUT) rr & ./$(CLIENT_OUT)
+	./$(SERVER_OUT) 1 & ./$(CLIENT_OUT) 0
 run-fairness : $(SERVER_OUT) $(CLIENT_OUT)
-	./$(SERVER_OUT) fairness & ./$(CLIENT_OUT)
+	./$(SERVER_OUT) 2 & ./$(CLIENT_OUT) 1
 
 # Plot target
 plot: plot.py
