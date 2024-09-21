@@ -198,5 +198,27 @@ void *client_thread(void *arg) // Client thread function
     request_words(client_sock_fd, client_info);                                         // Request words from server
     print_word_freq(client_info);                                                       // Print word frequency
     std::cout << "Client " << client_info->client_id << " has finished." << std::endl;  // Client Finished
-    pthread_exit(nullptr); // Exit thread
+    pthread_exit(nullptr);                                                              // Exit thread
+}
+
+void *client_thread_rogue(void *arg) // Rogue client thread function
+{
+    ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
+    
+    // Write to rogue output file
+    std::ostringstream oss;
+    oss << pthread_self();
+    std::string rogue_output_file = output_file + "_rogue_" + std::to_string(client_info->client_id) + "_" + oss.str() +  "_.txt";
+
+    write_with_of_stream(rogue_output_file, "Rogue client " + std::to_string(client_info->client_id) + " : " + oss.str() + " is starting...\n", false); // Rogue client started
+    
+
+    
+    
+    
+    
+    
+    
+    write_with_of_stream(rogue_output_file, "Rogue client " + std::to_string(client_info->client_id) + " has finished.\n", true); // Rogue client finished
+    pthread_exit(nullptr);                                                                                               // Exit thread
 }

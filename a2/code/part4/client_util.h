@@ -22,6 +22,7 @@ int connect_to_server();
 void request_words(int client_sock_fd, ClientInfo *client_info);
 void print_word_freq(const ClientInfo *client_info);
 void *client_thread(void *arg);
+void *client_thread_rogue(void *arg);
 
 // Global variables (consider making these non-global in a real application)
 extern int num_clients;
