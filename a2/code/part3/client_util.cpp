@@ -164,9 +164,8 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
   {
     std::string req_payload = std::to_string(client_info->offset) + "\n";
 
-    // each ms, the client decides if it should send a request to the server
-    // this is determined if the unix timestamp of the current time in
-    // milliseconds is a multiple of client->time_slot_len if it is, the client
+    // each ms, the client decides if it should send a request to the server, this is determined if the unix timestamp of the current time in,
+    // milliseconds is a multiple of client->time_slot_len if it is, the client,
     // sends a request to the server
     if (should_send_request(client_info))
     {
@@ -237,6 +236,7 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 
 // Binary Exponential Backoff
 void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *client_info) {}
+
 // Sensing and Binary Exponential Backoff
 void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info) {}
 
