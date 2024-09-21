@@ -2,14 +2,15 @@
 
 // Packages
 #include "json.hpp"
-#include <arpa/inet.h>  // Provides functions for manipulating IP addresses (like inet_addr)
-#include <fstream>      // Provides file stream classes for reading/writing files
-#include <iostream>     // Provides input/output stream objects like cin, cout, cerr
-#include <netdb.h>      // Provides functions for network address and service translation
+#include <arpa/inet.h> // Provides functions for manipulating IP addresses (like inet_addr)
+#include <chrono>
+#include <fstream>  // Provides file stream classes for reading/writing files
+#include <iostream> // Provides input/output stream objects like cin, cout, cerr
+#include <netdb.h> // Provides functions for network address and service translation
 #include <netinet/in.h> // Provides Internet address family structures and constants
+#include <pthread.h> // Provides functions for creating and managing threads
 #include <sys/socket.h> // Includes core functions and structures for socket programming
-#include <unistd.h>     // Provides access to the POSIX operating system API
-#include <pthread.h>    // Provides functions for creating and managing threads
+#include <unistd.h> // Provides access to the POSIX operating system API
 
 // Read from file
 int port;
@@ -23,253 +24,320 @@ std::vector<std::string> words;
 // Constants
 const int BUFFER_SIZE = 1024;
 
+enum SERVER_STATUS { IDLE = 0, BUSY = 1 };
+
 // Server Status
-struct server_info
-{
-    int status = 0;
-    int client_socket;
-    int start_time;
-    int last_concurrent_request_time;
+struct server_info {
+  SERVER_STATUS status;
+  int client_socket;
+  int start_time;
+  int last_concurrent_request_time;
 };
 
-struct thread_data
-{
-    int client_socket;
+struct thread_data {
+  int client_socket;
 };
 
-struct server_info server_info; // Server status
+pthread_mutex_t server_info_status_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t server_info_lcrt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void read_config()
-{
-    try
-    {
-        // Open the config file
-        std::ifstream file("config.json");
-        nlohmann::json config;
-        file >> config;
+struct server_info server_info = {IDLE, -1, 0, 0}; // Server status
 
-        // Access data from the JSON
-        input_file = config["input_file"];
-        ip_address = config["server_ip"];
-        num_clients = config["num_clients"];
-        num_word_per_request = config["k"];
-        port = config["server_port"];
-        words_per_packet = config["p"];
-    }
-    catch (nlohmann::json::exception &e)
-    {
-        std::cerr << "JSON parsing error: " << e.what() << std::endl;
-    }
+void read_config() {
+  try {
+    // Open the config file
+    std::ifstream file("config.json");
+    nlohmann::json config;
+    file >> config;
+
+    // Access data from the JSON
+    input_file = config["input_file"];
+    ip_address = config["server_ip"];
+    num_clients = config["num_clients"];
+    num_word_per_request = config["k"];
+    port = config["server_port"];
+    words_per_packet = config["p"];
+  } catch (nlohmann::json::exception &e) {
+    std::cerr << "JSON parsing error: " << e.what() << std::endl;
+  }
 }
 
-void read_words()
-{
-    std::ifstream file(input_file);
-    std::string word;
-    // Read from the input stream file until it encounters the delimiter ',' (
-    while (std::getline(file, word, ','))
-    {
-        words.push_back(word);
-    }
-
-    // Add EOF to the end of the word list
-    std::string s = "";
-    s += EOF;
-    words.push_back(s);
+// Get time in milliseconds since epoch
+long long get_time_in_milliseconds() {
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::high_resolution_clock::now().time_since_epoch())
+      .count();
 }
 
-void handle_client(int client_socket)
-{
-    char buffer[BUFFER_SIZE] = {0};
-    int total_words_sent = 0;
-    while (total_words_sent != words.size())
-    {
-        if (server_info.status == 1)
-        {
-            // If the server is busy, sends "$$\n" to the client, indicating that the server is busy
-            server_info.last_concurrent_request_time = time(nullptr);
-            send(client_socket, "HUH!\n", 5, 0);
-            std ::cout << "Server is busy" << std::endl;
-            continue;
-        }
-        memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
-        int valread = read(client_socket, buffer, BUFFER_SIZE);
-        if (valread <= 0)
-            break;
+void read_words() {
+  std::ifstream file(input_file);
+  std::string word;
+  // Read from the input stream file until it encounters the delimiter ',' (
+  while (std::getline(file, word, ',')) {
+    words.push_back(word);
+  }
 
-        // Converts the received string (assumed to be a number) to an integer.
-        // This offset represents the starting position in the word list requested by the client.
+  // Add EOF to the end of the word list
+  std::string s = "";
+  s += EOF;
+  words.push_back(s);
+}
 
-        int offset = std::stoi(buffer);
-        // Checks if the requested offset is beyond the end of the word list
+void handle_client(int client_socket) {
+  char buffer[BUFFER_SIZE] = {0};
+  int total_words_sent = 0;
 
-        // Invalid Offset
-        if (offset >= words.size())
-        {
-            // If the offset is too large, sends "$$\n" to the client, indicating an invalid offset
-            send(client_socket, "$$\n", 3, 0);
-            break;
-        }
+  while (total_words_sent != words.size()) {
 
-        server_info.status = 1;
-        server_info.client_socket = client_socket;
-        server_info.start_time = time(nullptr);
-
-        // Valid offset
-        bool eof = false;
-        for (int word_count = 0; word_count < num_word_per_request && !eof;) // Loop to send the requested words to the client
-        {
-
-            std::string packet; // Packet to be sent to the client
-            for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof; packet_count++, word_count++)
-            {
-                std::string word = words[offset + word_count];
-                packet += word;
-                packet += ",";
-
-                std::string s = "";
-                s += EOF;
-                if (word == s)
-                {
-                    eof = true;
-                    break;
-                }
-            }
-            packet.pop_back();                                       // Remove the last comma
-            packet = packet + "\n";                                  // Add a newline character at the end of the packet
-            send(client_socket, packet.c_str(), packet.length(), 0); // Send the packet to the client
-        }
-        server_info.status = 0;
+    // Check if the server is busy
+    if (pthread_mutex_lock(&server_info_status_mutex) == 0) {
+      if (server_info.last_concurrent_request_time > server_info.start_time) {
+        // If the server is busy, sends "$$\n" to the client, indicating that
+        // the server is busy
+        server_info.last_concurrent_request_time = get_time_in_milliseconds();
+        server_info.status = IDLE;
         server_info.client_socket = -1;
         server_info.start_time = 0;
+
+        if (send(client_socket, "HUH!\n", 5, 0) < -1) {
+          perror("Could not send HUH");
+          exit(EXIT_FAILURE);
+        }
+        std::cout << "Server is busy" << std::endl;
+        pthread_mutex_unlock(&server_info_status_mutex);
+        break;
+      }
+      pthread_mutex_unlock(&server_info_status_mutex);
     }
+
+    memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
+    int valread = read(client_socket, buffer, BUFFER_SIZE);
+    if (valread <= 0)
+      break;
+
+    // Converts the received string (assumed to be a number) to an integer.
+    // This offset represents the starting position in the word list requested
+    // by the client.
+
+    int offset = std::stoi(buffer);
+    // Checks if the requested offset is beyond the end of the word list
+
+    // Invalid Offset
+    if (offset >= words.size()) {
+      // If the offset is too large, sends "$$\n" to the client, indicating an
+      // invalid offset
+      if (send(client_socket, "$$\n", 3, 0) < -1) {
+        perror("Could not send packet");
+        exit(EXIT_FAILURE);
+      }
+      break;
+    }
+
+    // Valid offset
+    bool eof = false;
+    for (int word_count = 0;
+         word_count < num_word_per_request &&
+         !eof;) // Loop to send the requested words to the client
+    {
+
+      std::string packet; // Packet to be sent to the client
+      for (int packet_count = 0; packet_count < words_per_packet &&
+                                 word_count < num_word_per_request && !eof;
+           packet_count++, word_count++) {
+        std::string word = words[offset + word_count];
+        packet += word;
+        packet += ",";
+
+        std::string s = "";
+        s += EOF;
+        if (word == s) {
+          eof = true;
+          break;
+        }
+      }
+      packet.pop_back(); // Remove the last comma
+      packet =
+          packet + "\n"; // Add a newline character at the end of the packet
+      if (send(client_socket, packet.c_str(), packet.length(), 0) < -1) {
+        perror("Could not send packet");
+        exit(EXIT_FAILURE);
+      } // Send the packet to the client
+    }
+
+    pthread_mutex_lock(&server_info_status_mutex);
+    server_info.status = IDLE;
+    server_info.client_socket = -1;
+    server_info.start_time = 0;
+    pthread_mutex_unlock(&server_info_status_mutex);
+  }
 }
 
 // Thread function
-void *handle_client_thread(void *arg)
-{
-    struct thread_data *data = (struct thread_data *)arg;
+void *handle_client_thread(void *arg) {
+  struct thread_data *data = (struct thread_data *)arg;
+
+  // check if mutex is locked on server_info
+  // if yes, then send HUH to both clients
+  // else,
+  // lock mutex and call handle_client
+  if (pthread_mutex_trylock(&server_info_status_mutex) == 0) {
+
+    // std::cout << "" << std::endl;
+    std::cout << "Successfully locked server_info_status_mutex" << std::endl;
+    std::cout << "server info status: " << server_info.status << std::endl;
+    std::cout << "server info client socket: " << server_info.client_socket
+              << std::endl;
+    std::cout << "server info start time: " << server_info.start_time
+              << std::endl;
+    std::cout << "server info last concurrent request time: "
+              << server_info.last_concurrent_request_time << std::endl;
+
+    server_info.status = BUSY;
+    // time since epoch in milliseconds
+    server_info.client_socket = data->client_socket;
+    server_info.start_time = get_time_in_milliseconds();
+    pthread_mutex_unlock(&server_info_status_mutex);
     handle_client(data->client_socket);
+    // clean up this client socket after it has got its word by requesting
+    // server
     close(data->client_socket);
     delete data;
     pthread_exit(NULL);
+  } else {
+
+    if (errno == EBUSY) {
+      pthread_mutex_lock(&server_info_lcrt_mutex);
+      server_info.last_concurrent_request_time = get_time_in_milliseconds();
+      pthread_mutex_unlock(&server_info_lcrt_mutex);
+
+      // std::cout << data->client_socket << " tried to connect" << std::endl;
+      if (send(data->client_socket, "HUH!\n", 5, 0) < -1) {
+        perror("Could not send HUH");
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
 }
 
 // Concurrent
-void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
-{
-    std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
+void handle_clients(int server_socket_fd, sockaddr_in address,
+                    int address_len) {
+  std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
 
-    // Loop to accept multiple clients
-    for (int i = 0; i < num_clients; i++)
+  // Loop to accept multiple clients
+  for (int i = 0; i < num_clients; i++) {
+    int client_socket = accept(
+        server_socket_fd, reinterpret_cast<sockaddr *>(&address),
+        reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
+    if (client_socket < 0) // Checking if the client socket is valid
     {
-        int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
-        if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
-        {
-            perror("accept failed");
-            exit(EXIT_FAILURE);
-        }
-
-        // Client
-        struct thread_data *data = new thread_data; // Create thread data
-        data->client_socket = client_socket;        // Assign the client socket to the thread data
-
-        int rc = pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
-        if (rc)
-        {
-            std::cerr << "Error creating thread: " << rc << std::endl;
-            delete data;
-            close(client_socket);
-        }
+      perror("accept failed");
+      exit(EXIT_FAILURE);
     }
 
-    // Wait for all threads to complete
-    for (int i = 0; i < num_clients; i++)
-    {
-        pthread_join(threads[i], NULL);
-    }
+    // Client
+    struct thread_data *data = new thread_data; // Create thread data
+    data->client_socket =
+        client_socket; // Assign the client socket to the thread data
 
-    return;
+    int rc =
+        pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
+    if (rc) {
+      std::cerr << "Error creating thread: " << rc << std::endl;
+      delete data;
+      close(client_socket);
+    }
+  }
+
+  // Wait for all threads to complete
+  for (int i = 0; i < num_clients; i++) {
+    pthread_join(threads[i], NULL);
+  }
+
+  return;
 }
 
-void server()
-{
+void server() {
 
-    // Sever Socket
+  // Sever Socket
 
-    // In Unix-like systems, sockets are treated as files, and each is assigned a unique file descriptor (which is just an integer).
-    // - AF_INET: Indicates that the socket will use the IPv4 protocol.
-    // - SOCK_STREAM: Specifies the type of socket. This type provides connection-oriented, reliable, and order-preserving data transmission.
-    // - 0: This parameter specifies the protocol to be used, and TCP (the default protocol) is selected.
-    int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+  // In Unix-like systems, sockets are treated as files, and each is assigned
+  // a unique file descriptor (which is just an integer).
+  // - AF_INET: Indicates that the socket will use the IPv4 protocol.
+  // - SOCK_STREAM: Specifies the type of socket. This type provides
+  // connection-oriented, reliable, and order-preserving data transmission.
+  // - 0: This parameter specifies the protocol to be used, and TCP (the
+  // default protocol) is selected.
+  int server_socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 
-    // Check if the socket was created successfully or not, if it is not created it should return -1
-    if (server_socket_fd == -1)
-    {
-        perror("socket creation failure");
-        exit(EXIT_FAILURE);
+  // Check if the socket was created successfully or not, if it is not created
+  // it should return -1
+  if (server_socket_fd == -1) {
+    perror("socket creation failure");
+    exit(EXIT_FAILURE);
+  }
+
+  // Server Address
+
+  // sockaddr_in is a structure used to represent an Internet Protocol version
+  // 4(IPv4)socket address.
+  // - sin_family: This member specifies the address family. AF_INET is used
+  // for IPv4.
+  // - sin_port: Specifies the port number as a 16-bit integer.
+  // - sin_addr.s_addr: This member holds the IP address.
+  sockaddr_in address;
+  int address_len = sizeof(address);
+  address.sin_family = AF_INET;
+  if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY") {
+    // std::cout << ip_address;
+    // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
+    address.sin_addr.s_addr = INADDR_ANY;
+  } else {
+    // Otherwise, use the IP address from the config file
+    if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0) {
+      std::cerr << "Invalid address/ Address not supported" << std::endl;
     }
+  }
 
-    // Server Address
+  address.sin_port = htons(port);
 
-    // sockaddr_in is a structure used to represent an Internet Protocol version 4(IPv4)socket address.
-    // - sin_family: This member specifies the address family. AF_INET is used for IPv4.
-    // - sin_port: Specifies the port number as a 16-bit integer.
-    // - sin_addr.s_addr: This member holds the IP address.
-    sockaddr_in address;
-    int address_len = sizeof(address);
-    address.sin_family = AF_INET;
-    if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
-    {
-        // std::cout << ip_address;
-        // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
-        address.sin_addr.s_addr = INADDR_ANY;
-    }
-    else
-    {
-        // Otherwise, use the IP address from the config file
-        if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0)
-        {
-            std::cerr << "Invalid address/ Address not supported" << std::endl;
-        }
-    }
+  // Binding
 
-    address.sin_port = htons(port);
+  // The part where we bind the socket to an IP address and a port
+  // Binding a socket means associating the socket with a specific address and
+  // port number on the local machine. It tells the operating system that you
+  // want to receive incoming connections on a specific IP address and port
+  // combination Note: If you don't bind a socket explicitly, the system will
+  // assign a random port when you start listening or connecting.
+  if (bind(server_socket_fd, reinterpret_cast<sockaddr *>(&address),
+           address_len) < 0) {
+    perror("bind failed");
+    exit(EXIT_FAILURE);
+  }
 
-    // Binding
+  // Listening
 
-    // The part where we bind the socket to an IP address and a port
-    // Binding a socket means associating the socket with a specific address and port number on the local machine.
-    // It tells the operating system that you want to receive incoming connections on a specific IP address and port combination
-    // Note: If you don't bind a socket explicitly, the system will assign a random port when you start listening or connecting.
-    if (bind(server_socket_fd, reinterpret_cast<sockaddr *>(&address), address_len) < 0)
-    {
-        perror("bind failed");
-        exit(EXIT_FAILURE);
-    }
+  // Listening on a socket means configuring the socket to accept incoming
+  // connection requests. It prepares the socket to receive client
+  // connections, creating a queue for incoming connection requests. SOMACONN
+  // You specify a backlog parameter, which defines the maximum length of the
+  // queue for pending connections
+  if (listen(server_socket_fd, SOMAXCONN) < 0) {
+    perror("listen failed");
+    exit(EXIT_FAILURE);
+  }
+  std::cout << "Server listening on " << ip_address << ":" << port << std::endl;
 
-    // Listening
-
-    // Listening on a socket means configuring the socket to accept incoming connection requests.
-    // It prepares the socket to receive client connections, creating a queue for incoming connection requests.
-    // SOMACONN You specify a backlog parameter, which defines the maximum length of the queue for pending connections
-    if (listen(server_socket_fd, SOMAXCONN) < 0)
-    {
-        perror("listen failed");
-        exit(EXIT_FAILURE);
-    }
-    std::cout << "Server listening on " << ip_address << ":" << port << std::endl;
-
-    // hanlde clients
-    handle_clients(server_socket_fd, address, address_len);
-    close(server_socket_fd);
-    return;
+  // hanlde clients
+  handle_clients(server_socket_fd, address, address_len);
+  close(server_socket_fd);
+  return;
 }
 
 int main()
 
 {
-    read_config(); // Reading configuration
-    read_words();  // Loading the words from the file
-    server();      // Initiazling the server and start handling client requests
+  read_config(); // Reading configuration
+  read_words();  // Loading the words from the file
+  server();      // Initiazling the server and start handling client requests
 }

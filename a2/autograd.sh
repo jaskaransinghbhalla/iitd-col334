@@ -1,5 +1,5 @@
 #!/bin/bash
-DEST_DIR="/Users/jaskaransinghbhalla/Work/courses/col334/a2/autograd/submissions/"
+DEST_DIR="./autograd/submissions/"
 FOLDER_NAME="tt1211139_tt1211175"
 cp -r "./code" "./$FOLDER_NAME"
 zip -r  "./submission/$FOLDER_NAME" "./$FOLDER_NAME"
