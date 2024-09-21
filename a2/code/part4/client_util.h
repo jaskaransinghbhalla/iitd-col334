@@ -7,14 +7,13 @@
 // Structure to hold client information
 struct ClientInfo
 {
-    // Unique to client
     int client_id;
-    int offset;
-    std::map<std::string, int> wordFrequency;
-    // Shared among clients
     int num_word_per_request;
+    int offset;
     int port;
     int words_per_packet;
+    bool eof;
+    std::map<std::string, int> wordFrequency;
     std::string ip_address;
 };
 

@@ -9,6 +9,11 @@
 #include <vector>        // Vector
 #include <chrono>        // Add this for timing functionality
 
+// Controllers
+int ROGUE_CLIENT_EXISTS = 0;
+int ROGUE_THREADS = 5;
+
+// Global variables
 int num_clients;          // Number of clients to be created
 int num_word_per_request; // K
 int port;                 // Port number of the server
@@ -73,13 +78,39 @@ void handle_clients(int num_clients) // Create threads for num clients
     std::cout << "All clients have finished." << std::endl;
 }
 
-int main()
+void handle_clients_rogue() // Create threads for rogue client
 {
-    auto start_time = std::chrono::high_resolution_clock::now();                                  // Start timing
-    read_config();                                                                                // Read configuration file
-    handle_clients(num_clients);                                                                  // Create threads for num clients
-    auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
-    std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;          // Log the duration
-    return 0;                                                                                     // Exit the program
+    std::vector<pthread_t> rogue_threads(rogue_threads); // Vector to store thread IDs
+    std::vector<ClientInfo> client_infos(1);             // Vector to store client information
+
+    // Create threads for rogue client
+    intialize_client(0, &client_infos[0]);                                                          // Initialize client information
+    int result = pthread_create(&rogue_threads[0], nullptr, client_thread_rogue, &client_infos[0]); // Create a new thread for the client
+    if (result != 0)                                                                                // Check if thread creation was successful
+    {
+        std::cerr << "Error creating thread for rogue client" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    pthread_join([0], nullptr); // Wait for the thread to finish
+
+    std::cout << "Rogue client has finished." << std::endl;
+}
+int main(int argc, char *argv[])
+{
+    read_config();                            // Read configuration file
+    ROGUE_CLIENT_EXISTS = std::stoi(argv[1]); // Check if rogue client exists
+
+    if (ROGUE_CLIENT_EXISTS == 1)
+    {
+        std::cout << "Rogue client exists" << std::endl;
+        handle_clients_rogue();
+    }
+    else
+    {
+        std::cout << "Rogue client does not exist" << std::endl;
+        handle_clients(num_clients); // Create threads for num clients
+    }
+
+    return 0; // Exit the program
 }
