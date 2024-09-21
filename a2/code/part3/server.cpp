@@ -4,13 +4,13 @@
 #include "json.hpp"
 #include <arpa/inet.h> // Provides functions for manipulating IP addresses (like inet_addr)
 #include <chrono>
-#include <fstream>  // Provides file stream classes for reading/writing files
-#include <iostream> // Provides input/output stream objects like cin, cout, cerr
-#include <netdb.h> // Provides functions for network address and service translation
+#include <fstream>      // Provides file stream classes for reading/writing files
+#include <iostream>     // Provides input/output stream objects like cin, cout, cerr
+#include <netdb.h>      // Provides functions for network address and service translation
 #include <netinet/in.h> // Provides Internet address family structures and constants
-#include <pthread.h> // Provides functions for creating and managing threads
+#include <pthread.h>    // Provides functions for creating and managing threads
 #include <sys/socket.h> // Includes core functions and structures for socket programming
-#include <unistd.h> // Provides access to the POSIX operating system API
+#include <unistd.h>     // Provides access to the POSIX operating system API
 
 // Read from file
 int port;
@@ -24,17 +24,23 @@ std::vector<std::string> words;
 // Constants
 const int BUFFER_SIZE = 1024;
 
-enum SERVER_STATUS { IDLE = 0, BUSY = 1 };
+enum SERVER_STATUS
+{
+  IDLE = 0,
+  BUSY = 1
+};
 
 // Server Status
-struct server_info {
+struct server_info
+{
   SERVER_STATUS status;
   int client_socket;
   int start_time;
   int last_concurrent_request_time;
 };
 
-struct thread_data {
+struct thread_data
+{
   int client_socket;
 };
 
@@ -43,8 +49,10 @@ pthread_mutex_t server_info_lcrt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct server_info server_info = {IDLE, -1, 0, 0}; // Server status
 
-void read_config() {
-  try {
+void read_config()
+{
+  try
+  {
     // Open the config file
     std::ifstream file("config.json");
     nlohmann::json config;
@@ -57,23 +65,28 @@ void read_config() {
     num_word_per_request = config["k"];
     port = config["server_port"];
     words_per_packet = config["p"];
-  } catch (nlohmann::json::exception &e) {
+  }
+  catch (nlohmann::json::exception &e)
+  {
     std::cerr << "JSON parsing error: " << e.what() << std::endl;
   }
 }
 
 // Get time in milliseconds since epoch
-long long get_time_in_milliseconds() {
+long long get_time_in_milliseconds()
+{
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::high_resolution_clock::now().time_since_epoch())
       .count();
 }
 
-void read_words() {
+void read_words()
+{
   std::ifstream file(input_file);
   std::string word;
   // Read from the input stream file until it encounters the delimiter ',' (
-  while (std::getline(file, word, ',')) {
+  while (std::getline(file, word, ','))
+  {
     words.push_back(word);
   }
 
@@ -83,15 +96,19 @@ void read_words() {
   words.push_back(s);
 }
 
-void handle_client(int client_socket) {
+void handle_client(int client_socket)
+{
   char buffer[BUFFER_SIZE] = {0};
   int total_words_sent = 0;
 
-  while (total_words_sent != words.size()) {
+  while (total_words_sent != words.size())
+  {
 
     // Check if the server is busy
-    if (pthread_mutex_lock(&server_info_status_mutex) == 0) {
-      if (server_info.last_concurrent_request_time > server_info.start_time) {
+    if (pthread_mutex_lock(&server_info_status_mutex) == 0)
+    {
+      if (server_info.last_concurrent_request_time > server_info.start_time)
+      {
         // If the server is busy, sends "$$\n" to the client, indicating that
         // the server is busy
         server_info.last_concurrent_request_time = get_time_in_milliseconds();
@@ -99,7 +116,8 @@ void handle_client(int client_socket) {
         server_info.client_socket = -1;
         server_info.start_time = 0;
 
-        if (send(client_socket, "HUH!\n", 5, 0) < -1) {
+        if (send(client_socket, "HUH!\n", 5, 0) < -1)
+        {
           perror("Could not send HUH");
           exit(EXIT_FAILURE);
         }
@@ -123,10 +141,12 @@ void handle_client(int client_socket) {
     // Checks if the requested offset is beyond the end of the word list
 
     // Invalid Offset
-    if (offset >= words.size()) {
+    if (offset >= words.size())
+    {
       // If the offset is too large, sends "$$\n" to the client, indicating an
       // invalid offset
-      if (send(client_socket, "$$\n", 3, 0) < -1) {
+      if (send(client_socket, "$$\n", 3, 0) < -1)
+      {
         perror("Could not send packet");
         exit(EXIT_FAILURE);
       }
@@ -143,14 +163,16 @@ void handle_client(int client_socket) {
       std::string packet; // Packet to be sent to the client
       for (int packet_count = 0; packet_count < words_per_packet &&
                                  word_count < num_word_per_request && !eof;
-           packet_count++, word_count++) {
+           packet_count++, word_count++)
+      {
         std::string word = words[offset + word_count];
         packet += word;
         packet += ",";
 
         std::string s = "";
         s += EOF;
-        if (word == s) {
+        if (word == s)
+        {
           eof = true;
           break;
         }
@@ -158,7 +180,8 @@ void handle_client(int client_socket) {
       packet.pop_back(); // Remove the last comma
       packet =
           packet + "\n"; // Add a newline character at the end of the packet
-      if (send(client_socket, packet.c_str(), packet.length(), 0) < -1) {
+      if (send(client_socket, packet.c_str(), packet.length(), 0) < -1)
+      {
         perror("Could not send packet");
         exit(EXIT_FAILURE);
       } // Send the packet to the client
@@ -173,14 +196,16 @@ void handle_client(int client_socket) {
 }
 
 // Thread function
-void *handle_client_thread(void *arg) {
+void *handle_client_thread(void *arg)
+{
   struct thread_data *data = (struct thread_data *)arg;
 
   // check if mutex is locked on server_info
   // if yes, then send HUH to both clients
   // else,
   // lock mutex and call handle_client
-  if (pthread_mutex_trylock(&server_info_status_mutex) == 0) {
+  if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
+  {
 
     // std::cout << "" << std::endl;
     std::cout << "Successfully locked server_info_status_mutex" << std::endl;
@@ -203,15 +228,19 @@ void *handle_client_thread(void *arg) {
     close(data->client_socket);
     delete data;
     pthread_exit(NULL);
-  } else {
+  }
+  else
+  {
 
-    if (errno == EBUSY) {
+    if (errno == EBUSY)
+    {
       pthread_mutex_lock(&server_info_lcrt_mutex);
       server_info.last_concurrent_request_time = get_time_in_milliseconds();
       pthread_mutex_unlock(&server_info_lcrt_mutex);
 
       // std::cout << data->client_socket << " tried to connect" << std::endl;
-      if (send(data->client_socket, "HUH!\n", 5, 0) < -1) {
+      if (send(data->client_socket, "HUH!\n", 5, 0) < -1)
+      {
         perror("Could not send HUH");
         exit(EXIT_FAILURE);
       }
@@ -221,15 +250,17 @@ void *handle_client_thread(void *arg) {
 
 // Concurrent
 void handle_clients(int server_socket_fd, sockaddr_in address,
-                    int address_len) {
+                    int address_len)
+{
   std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
 
   // Loop to accept multiple clients
-  for (int i = 0; i < num_clients; i++) {
+  for (int i = 0; i < num_clients; i++)
+  {
     int client_socket = accept(
         server_socket_fd, reinterpret_cast<sockaddr *>(&address),
         reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
-    if (client_socket < 0) // Checking if the client socket is valid
+    if (client_socket < 0)                            // Checking if the client socket is valid
     {
       perror("accept failed");
       exit(EXIT_FAILURE);
@@ -242,7 +273,8 @@ void handle_clients(int server_socket_fd, sockaddr_in address,
 
     int rc =
         pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
-    if (rc) {
+    if (rc)
+    {
       std::cerr << "Error creating thread: " << rc << std::endl;
       delete data;
       close(client_socket);
@@ -250,14 +282,16 @@ void handle_clients(int server_socket_fd, sockaddr_in address,
   }
 
   // Wait for all threads to complete
-  for (int i = 0; i < num_clients; i++) {
+  for (int i = 0; i < num_clients; i++)
+  {
     pthread_join(threads[i], NULL);
   }
 
   return;
 }
 
-void server() {
+void server()
+{
 
   // Sever Socket
 
@@ -272,7 +306,8 @@ void server() {
 
   // Check if the socket was created successfully or not, if it is not created
   // it should return -1
-  if (server_socket_fd == -1) {
+  if (server_socket_fd == -1)
+  {
     perror("socket creation failure");
     exit(EXIT_FAILURE);
   }
@@ -288,13 +323,17 @@ void server() {
   sockaddr_in address;
   int address_len = sizeof(address);
   address.sin_family = AF_INET;
-  if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY") {
+  if (ip_address == "0.0.0.0" || ip_address == "INADDR_ANY")
+  {
     // std::cout << ip_address;
     // If the config specifies 0.0.0.0 or INADDR_ANY, use INADDR_ANY
     address.sin_addr.s_addr = INADDR_ANY;
-  } else {
+  }
+  else
+  {
     // Otherwise, use the IP address from the config file
-    if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0) {
+    if (inet_pton(AF_INET, ip_address.c_str(), &address.sin_addr) <= 0)
+    {
       std::cerr << "Invalid address/ Address not supported" << std::endl;
     }
   }
@@ -310,7 +349,8 @@ void server() {
   // combination Note: If you don't bind a socket explicitly, the system will
   // assign a random port when you start listening or connecting.
   if (bind(server_socket_fd, reinterpret_cast<sockaddr *>(&address),
-           address_len) < 0) {
+           address_len) < 0)
+  {
     perror("bind failed");
     exit(EXIT_FAILURE);
   }
@@ -322,7 +362,8 @@ void server() {
   // connections, creating a queue for incoming connection requests. SOMACONN
   // You specify a backlog parameter, which defines the maximum length of the
   // queue for pending connections
-  if (listen(server_socket_fd, SOMAXCONN) < 0) {
+  if (listen(server_socket_fd, SOMAXCONN) < 0)
+  {
     perror("listen failed");
     exit(EXIT_FAILURE);
   }

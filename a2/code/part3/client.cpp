@@ -9,6 +9,10 @@
 #include <vector>        // Vector
 #include <chrono>        // Add this for timing functionality
 
+// Global variables
+
+int protocol; // Protocol to be used
+
 int num_clients;          // Number of clients to be created
 int num_word_per_request; // K
 int port;                 // Port number of the server
@@ -50,14 +54,14 @@ void intialize_client(int client_id, ClientInfo *client_info) // Initialize clie
     client_info->ip_address = ip_address;                     // Set server IP address
     client_info->time_slot_len = time_slot_len;               // Set time slot length
     client_info->num_clients = num_clients;                   // Set number of clients
-    client_info->latest_request_sent_timestamp = 0;          // Set latest request timestamp to 0
+    client_info->latest_request_sent_timestamp = 0;           // Set latest request timestamp to 0
 }
 
-void handle_clients(int num_clients) // Create threads for num clients
+void handle_clients(int num_clients, int protocol) // Create threads for num clients
 {
     std::vector<pthread_t> threads(num_clients);       // Vector to store thread IDs
     std::vector<ClientInfo> client_infos(num_clients); // Vector to store client information
-
+    
     // Create threads for each client
     for (int i = 0; i < num_clients; ++i)
     {
@@ -78,13 +82,38 @@ void handle_clients(int num_clients) // Create threads for num clients
     std::cout << "All clients have finished." << std::endl;
 }
 
-int main()
+int main(int argc, char *argv[]) // Main function
 {
-    auto start_time = std::chrono::high_resolution_clock::now();                                  // Start timing
-    read_config();                                                                                // Read configuration file
-    handle_clients(num_clients);                                                                  // Create threads for num clients
-    auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
-    std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;          // Log the duration
-    return 0;                                                                                     // Exit the program
+    read_config();                 // Read configuration file
+    protocol = std::stoi(argv[1]); // Set protocol to the first argument
+    if (protocol == 0)
+    {
+        std::cout << "Slotted Aloha" << std::endl;
+    }
+    else if (protocol == 1)
+    {
+        std::cout << "Binary Exponential Backoff" << std::endl;
+    }
+    else if (protocol == 2)
+    {
+        std::cout << "Sensing and BEB" << std::endl;
+    }
+    else
+    {
+        std::cout << "Invalid protocol" << std::endl;
+        return 1;
+    }
+
+    handle_clients(num_clients, protocol); // Create threads for num clients
+    return 0;                    // Exit the program
 }
+// {
+//     protocol = argv[1];
+//     // auto start_time = std::chrono::high_resolution_clock::now();                                  // Start timing
+//     read_config();                                                                                // Read configuration file
+//     handle_clients(num_clients);                                                                  // Create threads for num clients
+//     // auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
+//     // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
+//     // std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;          // Log the duration
+//     return 0;                                                                                     // Exit the program
+// }

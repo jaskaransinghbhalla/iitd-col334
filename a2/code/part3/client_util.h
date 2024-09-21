@@ -25,7 +25,9 @@ struct ClientInfo
 int connect_to_server();
 void request_words(int client_sock_fd, ClientInfo *client_info);
 void print_word_freq(const ClientInfo *client_info);
-void *client_thread(void *arg);
+void *client_thread_slotted_aloha(void *arg);
+void *client_thread_binary_exponential_backoff(void *arg);
+void *client_thread_sensing_and_beb(void *arg);
 
 // Global variables (consider making these non-global in a real application)
 extern int num_clients;

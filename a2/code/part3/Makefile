@@ -34,6 +34,15 @@ $(CLIENT_OUT): $(CLIENT_OBJ)
 run: $(SERVER_OUT) $(CLIENT_OUT)
 	./$(SERVER_OUT) & ./$(CLIENT_OUT)
 
+run-aloha: $(SERVER_OUT) $(CLIENT_OUT)
+	./$(SERVER_OUT) & ./$(CLIENT_OUT) 0
+
+run-beb: $(SERVER_OUT) $(CLIENT_OUT)
+	./$(SERVER_OUT) & ./$(CLIENT_OUT) 1
+
+run-csma: $(SERVER_OUT) $(CLIENT_OUT)
+	./$(SERVER_OUT) & ./$(CLIENT_OUT) 2
+
 # Plot target
 plot: plot.py
 	python3 $<
