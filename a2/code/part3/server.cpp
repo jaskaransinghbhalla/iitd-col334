@@ -31,6 +31,7 @@ enum SERVER_STATUS
   IDLE = 0,
   BUSY = 1
 };
+
 struct server_info
 {
   SERVER_STATUS status = IDLE;
@@ -38,7 +39,9 @@ struct server_info
   int start_time = 0;
   int last_concurrent_request_time = 0;
 };
+
 struct server_info server_info;
+
 pthread_mutex_t server_info_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t server_info_lcrt_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -242,19 +245,13 @@ void *handle_client_thread(void *arg)
     collision_detected = true;
 
     // Send "HUH!" to the client that caused the collision
-    if (send(client_socket, "HUH!\n", 5, 0) < 0)
-    {
-      perror("Could not send HUH to colliding client");
-    }
+    send(client_socket, "HUH!\n", 5, 0);
 
     // Send "HUH!" to the client being served (if there is one)
     pthread_mutex_lock(&server_info_status_mutex);
     if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
     {
-      if (send(server_info.client_socket, "HUH!\n", 5, 0) < 0)
-      {
-        perror("Could not send HUH to client being served");
-      }
+      send(server_info.client_socket, "HUH!\n", 5, 0);
     }
     // Reset server status
     server_info.status = IDLE;

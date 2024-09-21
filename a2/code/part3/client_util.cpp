@@ -170,10 +170,6 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
     // sends a request to the server
     if (should_send_request(client_info))
     {
-      //   std::cout << "Client " << client_info->client_id
-      // << " sending request at offset " << client_info->offset
-      // << std::endl;
-      // client_info->latest_request_sent_timestamp =
       if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) <
           -1)
       {
@@ -201,18 +197,13 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 
         if (*buffer_temp == '\n')
         {
-          // std::cout << client_sock_fd << " : " << accumulated_data <<
-          // std::endl;
           if (accumulated_data == "HUH!")
           {
-            std::cout << client_sock_fd << " : Server busy, dropping the following " << accumulated_data << std::endl;
+            std::cout << client_sock_fd << " : Server busy, Dropping the following " << accumulated_data << std::endl;
             accumulated_data = "";
             break;
           }
-          std::string last_word =
-              process_packet(accumulated_data, client_info->wordFrequency);
-          // std::cout << "Client " << client_info->client_id << " " <<
-          // accumulated_data << " words." << std::endl;
+          std::string last_word = process_packet(accumulated_data, client_info->wordFrequency);
           std::string s = "";
           s += EOF;
           if (last_word == s)

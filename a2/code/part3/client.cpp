@@ -82,7 +82,11 @@ void handle_clients(int num_clients, int protocol) // Create threads for num cli
     {
         intialize_client(i + 1, &client_infos[i]);                                          // Initialize client information
         int result = pthread_create(&threads[i], nullptr, client_thread, &client_infos[i]); // Create a new thread for the client
-        if (result != 0)                                                                    // Check if thread creation was successful
+        if (i == 0)
+        {
+            sleep(1);
+        }
+        if (result != 0) // Check if thread creation was successful
         {
             std::cerr << "Error creating thread for client " << i + 1 << std::endl;
             exit(EXIT_FAILURE);
