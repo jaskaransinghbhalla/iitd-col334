@@ -16,6 +16,9 @@ struct ClientInfo
     int port;
     int words_per_packet;
     std::string ip_address;
+    int time_slot_len;
+    int num_clients;
+    long long latest_request_sent_timestamp;
 };
 
 // Function prototypes
