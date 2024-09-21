@@ -7,12 +7,15 @@
 // Structure to hold client information
 struct ClientInfo
 {
+    bool eof = false;
     int client_id;
     int num_word_per_request;
     int offset;
     int port;
     int words_per_packet;
-    bool eof;
+    pthread_mutex_t client_mutex;
+    std::atomic<bool> is_done{false};
+    bool is_processing{false};
     std::map<std::string, int> wordFrequency;
     std::string ip_address;
 };

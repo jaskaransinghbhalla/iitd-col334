@@ -12,8 +12,25 @@
 
 const int BUFFER_SIZE = 1024;
 
-std::string output_file = "output";
+std::string OUTPUT_FILE = "output";
+void write_with_of_stream(const std::string &filename, const std::string &content, bool append = false)
+{
+    std::ofstream outFile;
+    if (append)
+    {
+        outFile.open(filename, std::ios_base::app);
+    }
+    else
+    {
+        outFile.open(filename);
+    }
 
+    if (outFile.is_open())
+    {
+        outFile << content;
+        outFile.close();
+    }
+}
 int connect_to_server()
 {
     int client_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -87,25 +104,49 @@ std::string process_packet(const std::string &packet_data, std::map<std::string,
 void request_words(int client_sock_fd, ClientInfo *client_info)
 {
     char buffer[BUFFER_SIZE] = {0};
-    bool eof = false;
 
-    while (true)
+    while (!client_info->is_done.load())
     {
-        std::string req_payload = std::to_string(client_info->offset) + "\n";
+        // Temp code
+        std::ostringstream oss;
+        oss << pthread_self();
 
-        if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) < -1)
+        // Request
+        do
         {
-            perror("Client request failed");
-            exit(EXIT_FAILURE);
-        }
+            if (!client_info->is_processing)
+            {
+                std::string req_payload = std::to_string(client_info->offset) + "\n";
+                int s = send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0);
+                if (s < -1)
+                {
+                    perror("Client request failed");
+                    exit(EXIT_FAILURE);
+                }
+                
+                if (pthread_mutex_trylock(&client_info->client_mutex) != 0)
+                {
+                    continue;
+                }
+                client_info->is_processing = true;
+                break;
+            }
+
+        } while (true);
+        // pthread_mutex_unlock(&client_info->client_mutex);
+        std::cout << "Request Sent : " << client_info->client_id << " " << oss.str() << " " << client_info->offset << std::endl;
+
+        // Response
+
+        std::cout << "Processing Response : " << client_info->client_id << " " << oss.str() << " " << client_info->offset << std::endl;
 
         if (strcmp(buffer, "$$\n") == 0)
         {
             break;
         }
-
         int word_count = 0;
         std::string accumulated_data;
+
         while (word_count < num_word_per_request)
         {
             char buffer_temp[2] = {0};
@@ -119,59 +160,49 @@ void request_words(int client_sock_fd, ClientInfo *client_info)
 
             if (*buffer_temp == '\n')
             {
+                std::cout << "Packet Proccesed : " << client_info->client_id << " " << oss.str() << " " << client_info->offset << std::endl;
                 std::string last_word = process_packet(accumulated_data, client_info->wordFrequency);
                 std::string s = "";
                 s += EOF;
                 if (last_word == s)
                 {
-                    eof = true;
+                    client_info->eof = true;
+                    client_info->is_done.store(true);
+                    std::cout << "EOF Reached : " << client_info->client_id << " " << oss.str() << " " << client_info->offset << std::endl;
+
                     break;
                 }
 
                 word_count += words_per_packet;
                 accumulated_data = "";
             }
+
             else
             {
                 accumulated_data += buffer_temp[0];
             }
         }
 
-        if (!eof)
+        if (!client_info->eof)
         {
+
             client_info->offset += num_word_per_request;
+            std::cout << "Offset Updated : " << client_info->client_id << " " << oss.str() << " " << client_info->offset << std::endl;
         }
         else
         {
             break;
         }
+        client_info->is_processing = false;
+        pthread_mutex_unlock(&client_info->client_mutex);
+        std::cout << "Reponse Processed : " << client_info->client_id << " " << oss.str() << " " << std::endl;
     }
-
     close(client_sock_fd);
-}
-
-void write_with_of_stream(const std::string &filename, const std::string &content, bool append = false)
-{
-    std::ofstream outFile;
-    if (append)
-    {
-        outFile.open(filename, std::ios_base::app);
-    }
-    else
-    {
-        outFile.open(filename);
-    }
-
-    if (outFile.is_open())
-    {
-        outFile << content;
-        outFile.close();
-    }
 }
 
 void print_word_freq(const ClientInfo *client_info)
 {
-    std::string client_output_file = output_file + "_" + std::to_string(client_info->client_id) + ".txt";
+    std::string client_output_file = OUTPUT_FILE + "_" + std::to_string(client_info->client_id) + ".txt";
     write_with_of_stream(client_output_file, "", false);
 
     std::vector<std::pair<std::string, int>> pairs;
@@ -193,32 +224,37 @@ void *client_thread(void *arg) // Client thread function
 {
     ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
 
-    std::cout << "Client " << client_info->client_id << " is starting..." << std::endl; // Client Started                                                                  // Read configuration file
-    int client_sock_fd = connect_to_server();                                           // Connect to server
-    request_words(client_sock_fd, client_info);                                         // Request words from server
-    print_word_freq(client_info);                                                       // Print word frequency
-    std::cout << "Client " << client_info->client_id << " has finished." << std::endl;  // Client Finished
-    pthread_exit(nullptr);                                                              // Exit thread
+    std::cout << "Client " << client_info->client_id << " is starting..." << std::endl; // Client Started
+
+    int client_sock_fd = connect_to_server();   // Connect to server
+    request_words(client_sock_fd, client_info); // Request words from server
+    print_word_freq(client_info);               // Print word frequency
+
+    std::cout << "Client " << client_info->client_id << " has finished." << std::endl; // Client Finished
+    pthread_exit(nullptr);                                                             // Exit thread
 }
 
 void *client_thread_rogue(void *arg) // Rogue client thread function
 {
     ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
-    
+
     // Write to rogue output file
-    std::ostringstream oss;
-    oss << pthread_self();
-    std::string rogue_output_file = output_file + "_rogue_" + std::to_string(client_info->client_id) + "_" + oss.str() +  "_.txt";
+    // std::ostringstream oss;
+    // oss << pthread_self();
+    // std::string rogue_output_file = OUTPUT_FILE + "_rogue_" + std::to_string(client_info->client_id) + "_" + oss.str() + "_.txt";
 
-    write_with_of_stream(rogue_output_file, "Rogue client " + std::to_string(client_info->client_id) + " : " + oss.str() + " is starting...\n", false); // Rogue client started
-    
+    int client_sock_fd = connect_to_server();   // Connect to server
+    request_words(client_sock_fd, client_info); // Request words from server
 
-    
-    
-    
-    
-    
-    
-    write_with_of_stream(rogue_output_file, "Rogue client " + std::to_string(client_info->client_id) + " has finished.\n", true); // Rogue client finished
-    pthread_exit(nullptr);                                                                                               // Exit thread
+    if (!client_info->is_done.load()) // Rogue client not started
+    {
+        print_word_freq(client_info); // Print word frequency
+        std::cout << "Printing word frequency for rogue client " << client_info->client_id << std::endl;
+        client_info->is_done.store(true); // Set is_done flag to true
+    }
+
+    // write_with_of_stream(rogue_output_file, client_info->is_done.load() ? "true" : "false");                                      // Rogue client started
+    // write_with_of_stream(rogue_output_file, "Rogue client " + std::to_string(client_info->client_id) + " has finished.\n", true); // Rogue client finished
+
+    pthread_exit(nullptr); // Exit thread
 }

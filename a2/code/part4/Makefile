@@ -48,6 +48,8 @@ clean:
 
 cleanall:
 	rm -f $(SERVER_OUT) $(CLIENT_OUT) *.o output*.txt
+cleanout :
+	rm -f *.txt plot.png
 
 # Phony targets
 .PHONY: all clean run plot

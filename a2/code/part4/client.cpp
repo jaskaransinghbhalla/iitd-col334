@@ -11,7 +11,7 @@
 
 // Controllers
 int ROGUE_CLIENT_EXISTS = 0;
-int ROGUE_THREADS = 5;
+int ROGUE_THREADS = 2;
 
 // Global variables
 int num_clients;          // Number of clients to be created
@@ -45,12 +45,15 @@ void read_config() // Read configuration file
 void intialize_client(int client_id, ClientInfo *client_info) // Initialize client information
 {
     client_info->client_id = client_id;                       // Set client ID
-    client_info->offset = 0;                                  // Set offset to 0
-    client_info->wordFrequency.clear();                       // Clear word frequency map
-    client_info->num_word_per_request = num_word_per_request; // Set number of words per request
-    client_info->port = port;                                 // Set server port
-    client_info->words_per_packet = words_per_packet;         // Set words per packet
     client_info->ip_address = ip_address;                     // Set server IP address
+    client_info->is_done = false;                             // Set is_done flag to false
+    client_info->is_processing= false;                             // Set is_done flag to false
+    client_info->num_word_per_request = num_word_per_request; // Set number of words per request
+    client_info->offset = 0;                                  // Set offset to 0
+    client_info->port = port;                                 // Set server port
+    client_info->wordFrequency.clear();                       // Clear word frequency map
+    client_info->words_per_packet = words_per_packet;         // Set words per packet
+    pthread_mutex_init(&client_info->client_mutex, nullptr);  // Initialize client mutex
 }
 
 void handle_clients(int num_clients) // Create threads for num clients
@@ -73,7 +76,7 @@ void handle_clients(int num_clients) // Create threads for num clients
     for (int i = 0; i < num_clients; ++i) // Wait for all threads to complete
     {
         pthread_join(threads[i], nullptr); // Wait for the thread to finish
-        }
+    }
 
     std::cout << "All clients have finished." << std::endl;
 }
@@ -84,7 +87,6 @@ void handle_clients_rogue() // Create threads for rogue client
     std::vector<pthread_t> threads(num_clients);         // Vector to store thread IDs
     std::vector<ClientInfo> client_infos(num_clients);   // Vector to store client information
     std::vector<pthread_t> rogue_threads(ROGUE_THREADS); // Vector to store thread IDs for rogue client
-    std::vector<ClientInfo> rogue_client_infos(1);       // Vector to store client information for rogue client
 
     // Create threads for each client except rogue client
     for (int i = 0; i < num_clients - 1; ++i)
@@ -99,10 +101,12 @@ void handle_clients_rogue() // Create threads for rogue client
     }
 
     intialize_client(num_clients - 1, &client_infos[num_clients - 1]); // Initialize client information
+    ClientInfo &rogue_client_info = client_infos[num_clients - 1];     // Get rogue client information
+    // rogue_client_info.is_done = false;                                 // Set is_done flag to false
     for (int i = 0; i < ROGUE_THREADS; ++i)
     {
-        int result = pthread_create(&rogue_threads[i], nullptr, client_thread_rogue, &client_infos[num_clients - 1]); // Create a new thread for the client
-        if (result != 0)                                                                                               // Check if thread creation was successful
+        int result = pthread_create(&rogue_threads[i], nullptr, client_thread_rogue, &rogue_client_info); // Create a new thread for the client
+        if (result != 0)                                                                                  // Check if thread creation was successful
         {
             std::cerr << "Error creating thread for rogue client" << std::endl;
             exit(EXIT_FAILURE);
