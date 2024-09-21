@@ -182,10 +182,31 @@ void handle_client_requests(int client_socket)
 {
   int total_words_sent = 0;
   bool is_collision = false;
-
   while (total_words_sent < words.size())
   {
-
+    char temp_buffer[6] = {0};
+    memset(temp_buffer, 0, 6); // Clear the buffer
+    recv(client_socket, temp_buffer, 6, MSG_PEEK);
+    if (strncmp(temp_buffer, "BUSY?\n", 6) == 0)
+    {
+      memset(temp_buffer, 0, 6); // Clear the buffer
+      recv(client_socket, temp_buffer, 6, 0);
+      if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
+      {
+        if (server_info.status == BUSY)
+        {
+          send(client_socket, "BUSY\n", 5, 0);
+        }
+        else
+        {
+          send(client_socket, "IDLE\n", 5, 0);
+        }
+        pthread_mutex_unlock(&server_info_status_mutex);
+      }
+      continue;
+    }
+    // else
+    // {
     if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
     // Try to acquire the lock
     {
@@ -263,6 +284,7 @@ void handle_client_requests(int client_socket)
       is_collision = false;
       pthread_mutex_unlock(&server_info_status_mutex);
     }
+    // }
   }
 }
 
