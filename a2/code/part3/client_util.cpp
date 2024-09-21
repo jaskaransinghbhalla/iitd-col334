@@ -328,7 +328,107 @@ void request_words_binary_exponential_backoff(int client_sock_fd,
 
 // Sensing and Binary Exponential Backoff
 void request_words_sensing_and_beb(int client_sock_fd,
-                                   ClientInfo *client_info) {}
+                                   ClientInfo *client_info) {
+
+  char buffer[BUFFER_SIZE] = {0};
+  char sense_buffer[5] = {0};
+
+  bool eof = false;
+
+  while (true) {
+    if (send(client_sock_fd, "BUSY?\n", 6, 0) < -1) {
+      perror("Client request failed");
+      exit(EXIT_FAILURE);
+    }
+
+    if (strcmp(buffer, "$$\n") == 0) {
+      break;
+    }
+
+    int valread = recv(client_sock_fd, sense_buffer, BUFFER_SIZE, 0);
+    if (valread < 0) {
+      perror("Error reading from server");
+      exit(EXIT_FAILURE);
+    }
+
+    if (strcmp(sense_buffer, "BUSY\n") == 0) {
+      std::cout << client_sock_fd << " : Server status is busy, waiting for " << client_info->time_slot_len << "ms" << std::endl;
+      // beb(1, client_info->time_slot_len);
+      sleep(client_info->time_slot_len / 1000);
+      continue;
+    } else if (strcmp(sense_buffer, "IDLE\n") == 0) {
+      std::cout << client_sock_fd << " : Server status is idle, sending request" << std::endl;
+      std::string req_payload = std::to_string(client_info->offset) + "\n";
+
+      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) <
+          -1) {
+        perror("Client request failed");
+        exit(EXIT_FAILURE);
+      }
+
+      if (strcmp(buffer, "$$\n") == 0) {
+        break;
+      }
+
+      int word_count = 0;
+      std::string accumulated_data;
+      std::vector<std::string> packets_to_process;
+
+      while (word_count < num_word_per_request) {
+        char buffer_temp[2] = {0};
+        int valread = recv(client_sock_fd, buffer_temp, 1, 0);
+
+        if (valread < 0) {
+          perror("Error reading from server");
+          exit(EXIT_FAILURE);
+        }
+
+        if (*buffer_temp == '\n') {
+          if (accumulated_data == "HUH!") {
+            std::cout << client_sock_fd
+                      << " : Server busy, Dropping the following Packets"
+                      << std::endl;
+            accumulated_data = "";
+            packets_to_process.clear();
+            beb(attempts, client_info->time_slot_len);
+            continue;
+          }
+
+          packets_to_process.push_back(accumulated_data);
+          std::string last_word = get_last_word(accumulated_data);
+
+          std::string s = "";
+          s += EOF;
+
+          if (last_word == s) {
+            for (const auto &packet : packets_to_process) {
+              process_packet(packet, client_info->wordFrequency);
+            }
+            eof = true;
+            break;
+          }
+          for (const auto &packet : packets_to_process) {
+            process_packet(packet, client_info->wordFrequency);
+          }
+          attempts = 0;
+          word_count += words_per_packet;
+          accumulated_data = "";
+          packets_to_process.clear();
+        } else {
+          accumulated_data += buffer_temp[0];
+        }
+      }
+
+      if (!eof) {
+        client_info->offset += num_word_per_request;
+      } else {
+        break;
+      }
+    } else {
+      // got something invalid from the server, panic and exit
+      std::cerr << "Invalid response from server, exiting" << std::endl;}
+  }
+}
 
 // Client thread functions
 void *client_thread_slotted_aloha(void *arg) // Client thread function
