@@ -16,6 +16,8 @@ const int BUFFER_SIZE = 1024;
 
 std::string output_file = "output";
 
+// General utility functions
+
 int connect_to_server()
 {
   int client_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -54,8 +56,7 @@ int connect_to_server()
   return client_sock_fd;
 }
 
-void count_word(const std::string &word,
-                std::map<std::string, int> &wordFrequency)
+void count_word(const std::string &word, std::map<std::string, int> &wordFrequency)
 {
   std::string s = "";
   s += EOF;
@@ -65,8 +66,7 @@ void count_word(const std::string &word,
   }
 }
 
-std::string process_packet(const std::string &packet_data,
-                           std::map<std::string, int> &wordFrequency)
+std::string process_packet(const std::string &packet_data, std::map<std::string, int> &wordFrequency)
 {
   std::vector<std::string> words;
   std::istringstream iss(packet_data);
@@ -90,40 +90,62 @@ std::string process_packet(const std::string &packet_data,
   return words.empty() ? "" : words.back();
 }
 
+void write_with_of_stream(const std::string &filename, const std::string &content, bool append = false)
+{
+  std::ofstream outFile;
+  if (append)
+  {
+    outFile.open(filename, std::ios_base::app);
+  }
+  else
+  {
+    outFile.open(filename);
+  }
+
+  if (outFile.is_open())
+  {
+    outFile << content;
+    outFile.close();
+  }
+}
+
+void print_word_freq(const ClientInfo *client_info)
+{
+  std::string client_output_file =
+      output_file + "_" + std::to_string(client_info->client_id) + ".txt";
+  write_with_of_stream(client_output_file, "", false);
+
+  std::vector<std::pair<std::string, int>> pairs;
+  for (const auto &item : client_info->wordFrequency)
+  {
+    pairs.push_back(item);
+  }
+
+  std::sort(pairs.begin(), pairs.end());
+
+  for (const auto &pair : pairs)
+  {
+    std::string result = pair.first + "," + std::to_string(pair.second) + '\n';
+    write_with_of_stream(client_output_file, result, true);
+  }
+}
+
+// Slotted Aloha
 int generate_random_integer(int x)
 {
-  // Initialize a random device
-  std::random_device rd;
-
-  // Use a Mersenne Twister engine to generate random numbers
-  std::mt19937 gen(rd());
-
-  // Create a distribution for numbers in the range [1, x]
-  std::uniform_int_distribution<> dis(1, x);
-
-  // Generate and return the random number
-  return dis(gen);
+  std::random_device rd;                     // Initialize a random device
+  std::mt19937 gen(rd());                    // Use a Mersenne Twister engine to generate random numbers
+  std::uniform_int_distribution<> dis(1, x); // Create a distribution for numbers in the range [1, x]
+  return dis(gen);                           // Generate and return the random number
 }
 
 bool should_send_request(ClientInfo *client_info)
 {
-  auto current_time = std::chrono::duration_cast<std::chrono::milliseconds>(
-                          std::chrono::system_clock::now().time_since_epoch())
-                          .count();
-
-  //   std::cout << current_time << " " <<
-  //   client_info->latest_request_sent_timestamp << std::endl;
-
+  auto current_time = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
   if (current_time % client_info->time_slot_len == 0)
   {
-    // generate a random integer between 1 and num_clients
-
-    // std::cout << "Client " << client_info->client_id << " can send now: " <<
-    // current_time << std::endl;
     int random_integer = generate_random_integer(client_info->num_clients);
-
-    if (random_integer == 1 &&
-        current_time != client_info->latest_request_sent_timestamp)
+    if (random_integer == 1 && current_time != client_info->latest_request_sent_timestamp)
     {
       client_info->latest_request_sent_timestamp = current_time;
       return true;
@@ -132,7 +154,7 @@ bool should_send_request(ClientInfo *client_info)
   return false;
 }
 
-void request_words(int client_sock_fd, ClientInfo *client_info)
+void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 {
   char buffer[BUFFER_SIZE] = {0};
   bool eof = false;
@@ -221,91 +243,35 @@ void request_words(int client_sock_fd, ClientInfo *client_info)
   close(client_sock_fd);
 }
 
-void write_with_of_stream(const std::string &filename,
-                          const std::string &content, bool append = false)
-{
-  std::ofstream outFile;
-  if (append)
-  {
-    outFile.open(filename, std::ios_base::app);
-  }
-  else
-  {
-    outFile.open(filename);
-  }
+// Binary Exponential Backoff
+void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *client_info) {}
+// Sensing and Binary Exponential Backoff
+void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info) {}
 
-  if (outFile.is_open())
-  {
-    outFile << content;
-    outFile.close();
-  }
-}
-
-void print_word_freq(const ClientInfo *client_info)
-{
-  std::string client_output_file =
-      output_file + "_" + std::to_string(client_info->client_id) + ".txt";
-  write_with_of_stream(client_output_file, "", false);
-
-  std::vector<std::pair<std::string, int>> pairs;
-  for (const auto &item : client_info->wordFrequency)
-  {
-    pairs.push_back(item);
-  }
-
-  std::sort(pairs.begin(), pairs.end());
-
-  for (const auto &pair : pairs)
-  {
-    std::string result = pair.first + "," + std::to_string(pair.second) + '\n';
-    write_with_of_stream(client_output_file, result, true);
-  }
-}
-
+// Client thread functions
 void *client_thread_slotted_aloha(void *arg) // Client thread function
 {
-  ClientInfo *client_info =
-      static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
-
-  std::cout << "Client " << client_info->client_id << " is starting..."
-            << std::endl;                     // Client Started // Read configuration file
-  int client_sock_fd = connect_to_server();   // Connect to server
-  request_words(client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);               // Print word frequency
-  std::cout << "Client " << client_info->client_id << " has finished."
-            << std::endl; // Client Finished
-
-  pthread_exit(nullptr); // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                 // Connect to server
+  request_words_slotted_aloha(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                             // Print word frequency
+  pthread_exit(nullptr);                                    // Exit thread
 }
 
 void *client_thread_binary_exponential_backoff(void *arg) // Client thread function
 {
-  // ClientInfo *client_info =
-  //     static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
-
-  // std::cout << "Client " << client_info->client_id << " is starting..."
-  //           << std::endl;                     // Client Started // Read configuration file
-  // int client_sock_fd = connect_to_server();   // Connect to server
-  // request_words(client_sock_fd, client_info); // Request words from server
-  // print_word_freq(client_info);               // Print word frequency
-  // std::cout << "Client " << client_info->client_id << " has finished."
-  //           << std::endl; // Client Finished
-
-  // pthread_exit(nullptr); // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg);              // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                              // Connect to server
+  request_words_binary_exponential_backoff(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                                          // Print word frequency
+  pthread_exit(nullptr);                                                 // Exit thread
 }
 
 void *client_thread_sensing_and_beb(void *arg) // Client thread function
 {
-  // ClientInfo *client_info =
-  //     static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
-
-  // std::cout << "Client " << client_info->client_id << " is starting..."
-  //           << std::endl;                     // Client Started // Read configuration file
-  // int client_sock_fd = connect_to_server();   // Connect to server
-  // request_words(client_sock_fd, client_info); // Request words from server
-  // print_word_freq(client_info);               // Print word frequency
-  // std::cout << "Client " << client_info->client_id << " has finished."
-  //           << std::endl; // Client Finished
-
-  // pthread_exit(nullptr); // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg);   // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                   // Connect to server
+  request_words_sensing_and_beb(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                               // Print word frequency
+  pthread_exit(nullptr);                                      // Exit thread
 }

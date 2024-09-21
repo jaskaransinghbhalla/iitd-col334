@@ -59,9 +59,24 @@ void intialize_client(int client_id, ClientInfo *client_info) // Initialize clie
 
 void handle_clients(int num_clients, int protocol) // Create threads for num clients
 {
+    // Set the client thread based on the protocol
+    void *_Nullable (*client_thread)(void *_Nullable); // Function pointer to client thread
+    if (protocol == 0)
+    {
+        client_thread = client_thread_slotted_aloha;
+    }
+    else if (protocol == 1)
+    {
+        client_thread = client_thread_binary_exponential_backoff;
+    }
+    else if (protocol == 2)
+    {
+        client_thread = client_thread_sensing_and_beb;
+    }
+
     std::vector<pthread_t> threads(num_clients);       // Vector to store thread IDs
     std::vector<ClientInfo> client_infos(num_clients); // Vector to store client information
-    
+
     // Create threads for each client
     for (int i = 0; i < num_clients; ++i)
     {
@@ -85,7 +100,7 @@ void handle_clients(int num_clients, int protocol) // Create threads for num cli
 int main(int argc, char *argv[]) // Main function
 {
     read_config();                 // Read configuration file
-    protocol = std::stoi(argv[1]); // Set protocol to the first argument
+    protocol = std::stoi(argv[1]); // Set protocol
     if (protocol == 0)
     {
         std::cout << "Slotted Aloha" << std::endl;
@@ -105,15 +120,5 @@ int main(int argc, char *argv[]) // Main function
     }
 
     handle_clients(num_clients, protocol); // Create threads for num clients
-    return 0;                    // Exit the program
+    return 0;                              // Exit the program
 }
-// {
-//     protocol = argv[1];
-//     // auto start_time = std::chrono::high_resolution_clock::now();                                  // Start timing
-//     read_config();                                                                                // Read configuration file
-//     handle_clients(num_clients);                                                                  // Create threads for num clients
-//     // auto end_time = std::chrono::high_resolution_clock::now();                                    // End timing
-//     // auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time); // Calculate duration
-//     // std::cout << "Execution time: " << duration.count() << " milliseconds" << std::endl;          // Log the duration
-//     return 0;                                                                                     // Exit the program
-// }

@@ -96,7 +96,7 @@ void read_words()
   words.push_back(s);
 }
 
-void handle_client(int client_socket)
+void handle_client(int client_socket) // Basil
 {
   char buffer[BUFFER_SIZE] = {0};
   int total_words_sent = 0;
@@ -196,7 +196,7 @@ void handle_client(int client_socket)
 }
 
 // Thread function
-void *handle_client_thread(void *arg)
+void *handle_client_thread(void *arg) // Basil
 {
   struct thread_data *data = (struct thread_data *)arg;
 
@@ -249,8 +249,7 @@ void *handle_client_thread(void *arg)
 }
 
 // Concurrent
-void handle_clients(int server_socket_fd, sockaddr_in address,
-                    int address_len)
+void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
   std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
 
