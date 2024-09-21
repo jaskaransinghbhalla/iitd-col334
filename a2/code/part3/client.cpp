@@ -14,6 +14,7 @@ int num_word_per_request; // K
 int port;                 // Port number of the server
 int words_per_packet;     // P
 std::string ip_address;   // IP address of the server
+int time_slot_len;
 
 void read_config() // Read configuration file
 {
@@ -28,6 +29,7 @@ void read_config() // Read configuration file
         num_clients = config["num_clients"];
         ip_address = config["server_ip"];
         num_word_per_request = config["k"];
+        time_slot_len = config["T"];
         port = config["server_port"];
         words_per_packet = config["p"];
     }
@@ -46,6 +48,9 @@ void intialize_client(int client_id, ClientInfo *client_info) // Initialize clie
     client_info->port = port;                                 // Set server port
     client_info->words_per_packet = words_per_packet;         // Set words per packet
     client_info->ip_address = ip_address;                     // Set server IP address
+    client_info->time_slot_len = time_slot_len;               // Set time slot length
+    client_info->num_clients = num_clients;                   // Set number of clients
+    client_info->latest_request_sent_timestamp = 0;          // Set latest request timestamp to 0
 }
 
 void handle_clients(int num_clients) // Create threads for num clients
