@@ -180,11 +180,10 @@ void handle_client_request(int client_socket) // Basil
 void handle_client_requests(int client_socket)
 {
   int total_words_sent = 0;
+  bool is_collision = false;
 
-  while (total_words_sent != words.size())
+  while (total_words_sent < words.size())
   {
-
-    bool is_collision = false;
 
     if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
     // Try to acquire the lock
@@ -196,6 +195,8 @@ void handle_client_requests(int client_socket)
         server_info.status = BUSY;
         server_info.client_socket = client_socket;
         server_info.start_time = get_time_in_milliseconds();
+        is_collision = false;
+        collision_detected = false;
         pthread_mutex_unlock(&server_info_status_mutex);
 
         // Handle the client request
@@ -215,6 +216,8 @@ void handle_client_requests(int client_socket)
           server_info.status = IDLE;
           server_info.client_socket = -1;
           server_info.start_time = 0;
+          collision_detected = false;
+          is_collision = false;
           pthread_mutex_unlock(&server_info_status_mutex);
         }
       }
@@ -268,6 +271,7 @@ void *handle_client_thread(void *arg)
   int client_socket = data->client_socket;
   std::cout << "Client" << client_socket << " : Thread started" << std::endl;
   handle_client_requests(client_socket);
+  std::cout << "Client" << client_socket << " : Thread finished" << std::endl;
   close(client_socket);
   delete data;
   pthread_exit(NULL);
@@ -302,7 +306,7 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
   {
     pthread_join(threads[i], NULL);
   }
-
+  std::cout << "All clients have finished." << std::endl;
   return;
 }
 
@@ -387,6 +391,7 @@ void server()
 
   // hanlde clients
   handle_clients(server_socket_fd, address, address_len);
+  std::cout << "Server finished" << std::endl;
   close(server_socket_fd);
   return;
 }
