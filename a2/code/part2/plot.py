@@ -14,7 +14,7 @@ def generate_config(num_clients):
         "num_clients": num_clients,
         "p": 10,
         "server_ip": "127.0.0.1",
-        "server_port": 3000,
+        "server_port": 8080,
     }
 
 def run_process(command):
@@ -39,7 +39,7 @@ def main():
     
     avg_times = []
     confidence_intervals = []
-    num_clients_list = [1, 4, 8, 12, 16, 20,24,28, 32]
+    num_clients_list = [1, 4, 8, 12, 16, 20, 24, 28, 32]
     
     for num_clients in num_clients_list:
         print(f"Running with {num_clients} clients")
@@ -58,6 +58,7 @@ def main():
             continue
         
         # Give the server some time to start up
+        print("Waiting for server to start")
         time.sleep(2)
         
         # Run the client
@@ -89,7 +90,7 @@ def main():
     plt.figure(figsize=(10, 6))
     plt.plot(num_clients_list, avg_times, "o-")
     plt.xticks(num_clients_list)
-    plt.title("Average Completion Time vs Number of Clients with 95% Confidence Intervals")
+    plt.title("Average Completion Time vs Number of Clients")
     plt.xlabel("Number of Clients")
     plt.ylabel("Average Time (s)")
     plt.grid(True)
