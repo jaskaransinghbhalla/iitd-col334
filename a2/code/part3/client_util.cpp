@@ -17,7 +17,9 @@ const int MAX_ATTEMPTS = 10;
 
 std::string output_file = "output";
 
-// General utility functions
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////// Utility functions //////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int connect_to_server()
 {
@@ -52,8 +54,7 @@ int connect_to_server()
     exit(EXIT_FAILURE);
   }
 
-  std::cout << "Connected to server: " << ip_address << ":" << port
-            << std::endl;
+  std::cout << client_sock_fd << " : Connected to server: " << std::endl;
   return client_sock_fd;
 }
 
@@ -145,7 +146,7 @@ void print_word_freq(const ClientInfo *client_info)
   }
 }
 
-// Utility functions for Protocols
+////////////////////////////////////////// Utility Protocol ///////////////////////////////////////////
 int generate_random_integer(int x, int y)
 {
   std::random_device rd; // Initialize a random device
@@ -156,7 +157,8 @@ int generate_random_integer(int x, int y)
   return dis(gen); // Generate and return the random number
 }
 
-bool should_send_request(ClientInfo *client_info)
+////////////////////////////////////////// Slotted Aloha /////////////////////////////////////////////
+bool aloha_should_send_request(ClientInfo *client_info)
 {
   auto current_time = std::chrono::duration_cast<std::chrono::milliseconds>(
                           std::chrono::system_clock::now().time_since_epoch())
@@ -174,7 +176,6 @@ bool should_send_request(ClientInfo *client_info)
   return false;
 }
 
-// Slotted Aloha
 void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 {
   char buffer[BUFFER_SIZE] = {0};
@@ -185,10 +186,9 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
     // Request
     std::string req_payload = std::to_string(client_info->offset) + "\n";
 
-    if (should_send_request(client_info)) // Should send request
+    if (aloha_should_send_request(client_info)) // Should send request
     {
-      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) <
-          -1)
+      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) < -1)
       {
         perror("Client request failed");
         exit(EXIT_FAILURE);
@@ -268,6 +268,16 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
   close(client_sock_fd);
 }
 
+void *client_thread_slotted_aloha(void *arg) // Client thread function
+{
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                 // Connect to server
+  request_words_slotted_aloha(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                             // Print word frequency
+  pthread_exit(nullptr);                                    // Exit thread
+}
+
+//////////////////////////////////// Binary Exponential Backoff///////////////////////////////////////
 void beb(int attempts, int time_slot_len)
 {
   if (attempts > MAX_ATTEMPTS)
@@ -279,7 +289,7 @@ void beb(int attempts, int time_slot_len)
   int backoff_time = time_slot_len * generate_random_integer(0, ((int)pow(2, attempts) - 1)); // Generate random backoff time
   sleep(backoff_time / 1000);
 }
-// Binary Exponential Backoff
+
 void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *client_info)
 {
   char buffer[BUFFER_SIZE] = {0};
@@ -376,7 +386,16 @@ void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *cl
   std::cout << client_info->client_id << " : Request Completed" << std::endl;
 }
 
-// Sensing and Binary Exponential Backoff
+void *client_thread_binary_exponential_backoff(void *arg) // Client thread function
+{
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg);              // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                              // Connect to server
+  request_words_binary_exponential_backoff(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                                          // Print word frequency
+  pthread_exit(nullptr);                                                 // Exit thread
+}
+
+////////////////////////////// Sensing and Binary Exponential Backoff/////////////////////////////////
 void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info)
 {
   int attempts = 0;
@@ -501,26 +520,6 @@ void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info)
     }
     sleep(10000);
   }
-}
-
-// Client thread functions
-void *client_thread_slotted_aloha(void *arg) // Client thread function
-{
-  ClientInfo *client_info =
-      static_cast<ClientInfo *>(arg);                       // Cast argument to ClientInfo pointer
-  int client_sock_fd = connect_to_server();                 // Connect to server
-  request_words_slotted_aloha(client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);                             // Print word frequency
-  pthread_exit(nullptr);                                    // Exit thread
-}
-
-void *client_thread_binary_exponential_backoff(void *arg) // Client thread function
-{
-  ClientInfo *client_info = static_cast<ClientInfo *>(arg);              // Cast argument to ClientInfo pointer
-  int client_sock_fd = connect_to_server();                              // Connect to server
-  request_words_binary_exponential_backoff(client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);                                          // Print word frequency
-  pthread_exit(nullptr);                                                 // Exit thread
 }
 
 void *client_thread_sensing_and_beb(void *arg) // Client thread function
