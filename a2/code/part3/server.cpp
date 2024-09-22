@@ -13,7 +13,9 @@
 #include <sys/socket.h> // Includes core functions and structures for socket programming
 #include <unistd.h>     // Provides access to the POSIX operating system API
 
-// Read from file
+int done = 0;
+
+// Constants
 int port;
 int num_clients = 1;
 int words_per_packet;
@@ -111,7 +113,7 @@ bool handle_client_request(int client_socket) // Basil
     // Collision detected, stop processing
     collision_detected = true;
     pthread_mutex_unlock(&server_info_status_mutex);
-    return false;
+    return true;
   }
   pthread_mutex_unlock(&server_info_status_mutex);
 
@@ -127,7 +129,7 @@ bool handle_client_request(int client_socket) // Basil
   FD_SET(client_socket, &read_fds);
 
   // Set timeout to 5 seconds
-  timeout.tv_sec = 5;
+  timeout.tv_sec = 2;
   timeout.tv_usec = 0;
 
   // Wait for the socket to be ready for reading
@@ -153,7 +155,7 @@ bool handle_client_request(int client_socket) // Basil
   }
 
   int offset = std::stoi(buffer);
-  std::cout << client_socket << " : Requested offset: " << offset << std::endl;
+  std::cout << client_socket << " : Recieved : " << offset << std::endl;
 
   if (offset >= words.size())
   {
@@ -199,7 +201,13 @@ bool handle_client_request(int client_socket) // Basil
       exit(EXIT_FAILURE);
     } // Send the packet to the client
   }
-  std::cout << "" << client_socket << " : Request handled" << std::endl;
+
+  if (collision_detected)
+  {
+    return false;
+  }
+
+  std::cout << "" << client_socket << " : Handled :" << offset << std::endl;
   return true;
 }
 
@@ -219,7 +227,7 @@ bool check_control_req(int client_socket)
     FD_SET(client_socket, &read_fds);
 
     // Set timeout to 5 seconds
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 2;
     timeout.tv_usec = 0;
 
     // Wait for the socket to be ready for reading
@@ -255,13 +263,13 @@ bool check_control_req(int client_socket)
 
 void handle_client_requests(int client_socket)
 {
+
   int total_words_sent = 0;
   bool is_collision = false;
 
   while (total_words_sent < words.size())
   {
     bool is_control_request = check_control_req(client_socket);
-
     if (pthread_mutex_trylock(&server_info_status_mutex) == 0) // Try to acquire the lock
     {
       // Successfully acquired the lock
@@ -274,6 +282,7 @@ void handle_client_requests(int client_socket)
           pthread_mutex_unlock(&server_info_status_mutex);
           continue;
         }
+
         server_info.status = BUSY;
         server_info.client_socket = client_socket;
         server_info.start_time = get_time_in_milliseconds();
@@ -284,14 +293,15 @@ void handle_client_requests(int client_socket)
         // Handle the client request
 
         bool s = handle_client_request(client_socket);
-        if (!s)
-        {
-          server_info.status = IDLE;
-          server_info.client_socket = -1;
-          server_info.start_time = 0;
-          collision_detected = false;
-          continue;
-        }
+        // if (!s)
+        // {
+        //   server_info.status = IDLE;
+        //   server_info.client_socket = -1;
+        //   server_info.start_time = 0;
+        //   collision_detected = false;
+        //   send(client_socket, "HUH!\n", 5, 0);
+        //   continue;
+        // }
 
         // Check if a collision occurred during handling
         if (collision_detected)
@@ -301,14 +311,18 @@ void handle_client_requests(int client_socket)
         else
         {
           // Reset server status after successful handling
-          total_words_sent += num_word_per_request;
+
           pthread_mutex_lock(&server_info_status_mutex);
+
           server_info.status = IDLE;
           server_info.client_socket = -1;
           server_info.start_time = 0;
           collision_detected = false;
           is_collision = false;
+
           pthread_mutex_unlock(&server_info_status_mutex);
+
+          total_words_sent += num_word_per_request;
         }
       }
       else
@@ -331,7 +345,12 @@ void handle_client_requests(int client_socket)
         send(client_socket, "BUSY\n", 5, 0);
         continue;
       }
+
       // Handle collision
+      pthread_mutex_lock(&server_info_status_mutex);
+      std::cout << client_socket << " : Collision detected : " << server_info.client_socket << std::endl;
+      pthread_mutex_unlock(&server_info_status_mutex);
+
       pthread_mutex_lock(&server_info_lcrt_mutex);
       long long current_time = get_time_in_milliseconds();
       server_info.last_concurrent_request_time = current_time;
@@ -342,12 +361,14 @@ void handle_client_requests(int client_socket)
 
       // Send "HUH!" to the client that caused the collision
       send(client_socket, "HUH!\n", 5, 0);
+      std::cout << client_socket << " : Sent HUH!" << std::endl;
 
       // Send "HUH!" to the client being served (if there is one)
       pthread_mutex_lock(&server_info_status_mutex);
-      if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
+      if (server_info.client_socket != -1 && server_info.client_socket != client_socket)
       {
         send(server_info.client_socket, "HUH!\n", 5, 0);
+        std::cout << server_info.client_socket << " : Sent HUH!" << std::endl;
       }
       // Reset server status
       server_info.status = IDLE;
@@ -355,38 +376,53 @@ void handle_client_requests(int client_socket)
       server_info.start_time = 0;
       collision_detected = false;
       is_collision = false;
+
       pthread_mutex_unlock(&server_info_status_mutex);
+
+      std::cout << client_socket << " : Collision Handled" << std::endl;
     }
   }
 }
 
 void *handle_client_thread(void *arg)
 {
-  struct thread_data *data = (struct thread_data *)arg;
-  int client_socket = data->client_socket;
+  int client_socket = ((struct thread_data *)arg)->client_socket;
+
   std::cout << "" << client_socket << " : Thread started" << std::endl;
+
   handle_client_requests(client_socket);
+
   std::cout << "" << client_socket << " : Thread finished" << std::endl;
+
+  std::cout << "Clients Done : " << ++done << std::endl;
+
   close(client_socket);
-  delete data;
+
   pthread_exit(NULL);
 }
 
 void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
 {
-  std::vector<pthread_t> threads(num_clients); // Vector to store the thread IDs
-  for (int i = 0; i < num_clients; i++)        // Loop to accept multiple clients
+
+  // Vector to store the thread IDs
+
+  std::vector<pthread_t> threads(num_clients);
+
+  // Loop to accept multiple clients
+
+  for (int i = 0; i < num_clients; i++)
   {
     int client_socket = accept(server_socket_fd, reinterpret_cast<sockaddr *>(&address), reinterpret_cast<socklen_t *>(&address_len)); // Accepting the client
-    if (client_socket < 0)                                                                                                             // Checking if the client socket is valid
+
+    if (client_socket < 0) // Checking if the client socket is valid
     {
       perror("accept failed");
       exit(EXIT_FAILURE);
     }
 
     // Client
-    struct thread_data *data = new thread_data; // Create thread data
-    data->client_socket = client_socket;        // Assign the client socket to the thread data
+    struct thread_data *data = new thread_data{client_socket}; // Create thread data and assign the client socke
+
     int rc = pthread_create(&threads[i], NULL, handle_client_thread, (void *)data);
     if (rc)
     {
@@ -396,12 +432,15 @@ void handle_clients(int server_socket_fd, sockaddr_in address, int address_len)
     }
   }
 
-  // Wait for all threads to complete
+  // Wait for all threads to finish
+
   for (int i = 0; i < num_clients; i++)
   {
     pthread_join(threads[i], NULL);
   }
+
   std::cout << "All clients have finished." << std::endl;
+
   return;
 }
 
@@ -482,9 +521,7 @@ void server()
     perror("listen failed");
     exit(EXIT_FAILURE);
   }
-  std::cout << "Server listening on " << ip_address << ":" << port << std::endl;
-
-  // hanlde clients
+  std::cout << "Server listening" << std::endl;
   handle_clients(server_socket_fd, address, address_len);
   std::cout << "Server finished" << std::endl;
   close(server_socket_fd);
