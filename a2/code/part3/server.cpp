@@ -166,44 +166,49 @@ void handle_client_request(int client_socket) // Basil
       exit(EXIT_FAILURE);
     } // Send the packet to the client
   }
+  std::cout << "Client" << client_socket << " request handled" << std::endl;
+}
+
+bool check_control_req(int client_socket)
+{
+  char temp_buffer[6] = {0};
+  memset(temp_buffer, 0, 6); // Clear the buffer
+
+  int r = recv(client_socket, temp_buffer, 6, MSG_PEEK);
+
+  std::cout << "Control request: " << temp_buffer << std::endl;
+
+  if (r == 6 && strcmp(temp_buffer, "BUSY?\n") == 0)
+  {
+    memset(temp_buffer, 0, 6); // Clear the buffer
+    read(client_socket, temp_buffer, 6);
+    return true;
+  }
+
+  return false;
 }
 
 void handle_client_requests(int client_socket)
 {
   int total_words_sent = 0;
   bool is_collision = false;
+
   while (total_words_sent < words.size())
   {
-    char temp_buffer[6] = {0};
-    memset(temp_buffer, 0, 6); // Clear the buffer
-    recv(client_socket, temp_buffer, 6, MSG_PEEK);
-    if (strncmp(temp_buffer, "BUSY?\n", 6) == 0)
-    {
-      memset(temp_buffer, 0, 6); // Clear the buffer
-      recv(client_socket, temp_buffer, 6, 0);
-      if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
-      {
-        if (server_info.status == BUSY)
-        {
-          send(client_socket, "BUSY\n", 5, 0);
-        }
-        else
-        {
-          send(client_socket, "IDLE\n", 5, 0);
-        }
-        pthread_mutex_unlock(&server_info_status_mutex);
-      }
-      continue;
-    }
-    // else
-    // {
-    if (pthread_mutex_trylock(&server_info_status_mutex) == 0)
-    // Try to acquire the lock
+    bool is_control_request = check_control_req(client_socket);
+
+    if (pthread_mutex_trylock(&server_info_status_mutex) == 0) // Try to acquire the lock
     {
       // Successfully acquired the lock
       if (server_info.status == IDLE)
       {
         // Server is idle, we can process this request
+        if (is_control_request)
+        {
+          send(client_socket, "IDLE\n", 5, 0);
+          pthread_mutex_unlock(&server_info_status_mutex);
+          continue;
+        }
         server_info.status = BUSY;
         server_info.client_socket = client_socket;
         server_info.start_time = get_time_in_milliseconds();
@@ -248,6 +253,11 @@ void handle_client_requests(int client_socket)
 
     if (is_collision)
     {
+      if (is_control_request)
+      {
+        send(client_socket, "BUSY\n", 5, 0);
+        continue;
+      }
       // Handle collision
       pthread_mutex_lock(&server_info_lcrt_mutex);
       long long current_time = get_time_in_milliseconds();
@@ -274,7 +284,6 @@ void handle_client_requests(int client_socket)
       is_collision = false;
       pthread_mutex_unlock(&server_info_status_mutex);
     }
-    // }
   }
 }
 
