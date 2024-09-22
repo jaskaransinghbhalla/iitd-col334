@@ -64,8 +64,8 @@ void handle_clients(int num_clients, int protocol) // Create threads for num cli
     // void *client_thread(void *arg); // Standard function prototype in C++
 
     // Declare a client_thread function pointer
-    void *_Nullable (*client_thread)(void *_Nullable);
-    // void *(*client_thread)(void *);
+    // void *_Nullable (*client_thread)(void *_Nullable);
+    void *(*client_thread)(void *);
     if (protocol == 0)
     {
         client_thread = client_thread_slotted_aloha;
