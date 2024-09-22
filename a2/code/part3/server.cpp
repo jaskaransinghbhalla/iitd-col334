@@ -168,16 +168,6 @@ void handle_client_request(int client_socket) // Basil
   }
 }
 
-// Check if the server is busy
-
-// Converts the received string (assumed to be a number) to an integer.
-// This offset represents the starting position in the word list requested
-// by the client.
-
-// Checks if the requested offset is beyond the end of the word list
-
-// Invalid Offset
-
 void handle_client_requests(int client_socket)
 {
   int total_words_sent = 0;
