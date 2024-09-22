@@ -24,7 +24,7 @@ void write_with_of_stream(const std::string &filename, const std::string &conten
     else
     {
         outFile.open(filename);
-    }
+    }   
 
     if (outFile.is_open())
     {
