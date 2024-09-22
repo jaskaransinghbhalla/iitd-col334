@@ -382,9 +382,8 @@ void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *cl
 }
 
 // Sensing and Binary Exponential Backoff
-void request_words_sensing_and_beb(int client_sock_fd,
-                                   ClientInfo *client_info) {
-
+void request_words_sensing_and_beb(int client_sock_fd,ClientInfo *client_info) {
+  int attempts = 0;
   char buffer[BUFFER_SIZE] = {0};
   char sense_buffer[5] = {0};
 
