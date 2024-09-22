@@ -99,7 +99,7 @@ void read_words()
   words.push_back(s);
 }
 
-void handle_client_request(int client_socket) // Basil
+bool handle_client_request(int client_socket) // Basil
 {
   pthread_mutex_lock(&server_info_status_mutex);
   if (server_info.last_concurrent_request_time > server_info.start_time)
@@ -107,7 +107,7 @@ void handle_client_request(int client_socket) // Basil
     // Collision detected, stop processing
     collision_detected = true;
     pthread_mutex_unlock(&server_info_status_mutex);
-    return;
+    return false;
   }
   pthread_mutex_unlock(&server_info_status_mutex);
 
@@ -115,12 +115,41 @@ void handle_client_request(int client_socket) // Basil
 
   memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
 
-  int valread = read(client_socket, buffer, BUFFER_SIZE);
-  if (valread <= 0)
-    return;
+  fd_set read_fds;
+  struct timeval timeout;
+
+  // Initialize the file descriptor set
+  FD_ZERO(&read_fds);
+  FD_SET(client_socket, &read_fds);
+
+  // Set timeout to 5 seconds
+  timeout.tv_sec = 5;
+  timeout.tv_usec = 0;
+
+  // Wait for the socket to be ready for reading
+  int select_result = select(client_socket + 1, &read_fds, NULL, NULL, &timeout);
+
+  if (select_result > 0 && FD_ISSET(client_socket, &read_fds))
+  {
+    int valread = read(client_socket, buffer, BUFFER_SIZE);
+    if (valread <= 0)
+      return false;
+  }
+  else if (select_result == 0)
+  {
+    // Timeout occurred
+    std::cout << client_socket << " : Timeout" << std::endl;
+    return false;
+  }
+  else
+  {
+    // Error occurred
+    perror("select error");
+    return false;
+  }
 
   int offset = std::stoi(buffer);
-  std::cout << "Client" << client_socket << " requested offset: " << offset << std::endl;
+  std::cout << client_socket << " : Requested offset: " << offset << std::endl;
 
   if (offset >= words.size())
   {
@@ -131,7 +160,7 @@ void handle_client_request(int client_socket) // Basil
       perror("Could not send packet");
       exit(EXIT_FAILURE);
     }
-    return;
+    return true;
   }
 
   // Valid offset
@@ -166,7 +195,8 @@ void handle_client_request(int client_socket) // Basil
       exit(EXIT_FAILURE);
     } // Send the packet to the client
   }
-  std::cout << "Client" << client_socket << " request handled" << std::endl;
+  std::cout << "" << client_socket << " : Request handled" << std::endl;
+  return true;
 }
 
 bool check_control_req(int client_socket)
@@ -174,9 +204,40 @@ bool check_control_req(int client_socket)
   char temp_buffer[6] = {0};
   memset(temp_buffer, 0, 6); // Clear the buffer
 
-  int r = recv(client_socket, temp_buffer, 6, MSG_PEEK);
+  int r = recv(client_socket, temp_buffer, 6, MSG_PEEK | MSG_DONTWAIT);
+  while (r < -1 && errno == EAGAIN && errno == EWOULDBLOCK && client_socket != -1)
+  {
+    fd_set read_fds;
+    struct timeval timeout;
 
-  std::cout << "Control request: " << temp_buffer << std::endl;
+    // Initialize the file descriptor set
+    FD_ZERO(&read_fds);
+    FD_SET(client_socket, &read_fds);
+
+    // Set timeout to 5 seconds
+    timeout.tv_sec = 5;
+    timeout.tv_usec = 0;
+
+    // Wait for the socket to be ready for reading
+    int select_result = select(client_socket + 1, &read_fds, NULL, NULL, &timeout);
+
+    if (select_result > 0 && FD_ISSET(client_socket, &read_fds))
+    {
+      r = recv(client_socket, temp_buffer, 6, MSG_PEEK | MSG_DONTWAIT);
+    }
+    else if (select_result == 0)
+    {
+      // Timeout occurred
+      std::cerr << "Timeout occurred while waiting for control request" << std::endl;
+      return false;
+    }
+    else
+    {
+      // Error occurred
+      perror("select error");
+      return false;
+    }
+  }
 
   if (r == 6 && strcmp(temp_buffer, "BUSY?\n") == 0)
   {
@@ -218,7 +279,15 @@ void handle_client_requests(int client_socket)
 
         // Handle the client request
 
-        handle_client_request(client_socket);
+        bool s = handle_client_request(client_socket);
+        if (!s)
+        {
+          server_info.status = IDLE;
+          server_info.client_socket = -1;
+          server_info.start_time = 0;
+          collision_detected = false;
+          continue;
+        }
 
         // Check if a collision occurred during handling
         if (collision_detected)
@@ -291,9 +360,9 @@ void *handle_client_thread(void *arg)
 {
   struct thread_data *data = (struct thread_data *)arg;
   int client_socket = data->client_socket;
-  std::cout << "Client" << client_socket << " : Thread started" << std::endl;
+  std::cout << "" << client_socket << " : Thread started" << std::endl;
   handle_client_requests(client_socket);
-  std::cout << "Client" << client_socket << " : Thread finished" << std::endl;
+  std::cout << "" << client_socket << " : Thread finished" << std::endl;
   close(client_socket);
   delete data;
   pthread_exit(NULL);

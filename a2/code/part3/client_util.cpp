@@ -57,8 +57,7 @@ int connect_to_server()
   return client_sock_fd;
 }
 
-void count_word(const std::string &word,
-                std::map<std::string, int> &wordFrequency)
+void count_word(const std::string &word, std::map<std::string, int> &wordFrequency)
 {
   std::string s = "";
   s += EOF;
@@ -81,8 +80,7 @@ std::string get_last_word(const std::string &packet_data)
   return last_word;
 }
 
-void process_packet(const std::string &packet_data,
-                    std::map<std::string, int> &wordFrequency)
+void process_packet(const std::string &packet_data, std::map<std::string, int> &wordFrequency)
 {
   std::vector<std::string> words;
   std::istringstream iss(packet_data);
@@ -107,8 +105,7 @@ void process_packet(const std::string &packet_data,
   // return words.empty() ? "" : words.back();
 }
 
-void write_with_of_stream(const std::string &filename,
-                          const std::string &content, bool append = false)
+void write_with_of_stream(const std::string &filename, const std::string &content, bool append = false)
 {
   std::ofstream outFile;
   if (append)
@@ -221,9 +218,7 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
         {
           if (accumulated_data == "HUH!")
           {
-            std::cout << client_sock_fd
-                      << " : Server busy, Dropping the following Packets"
-                      << std::endl;
+            std::cout << client_sock_fd << " : Server Busy" << std::endl;
             accumulated_data = "";
             packets_to_process.clear();
             continue;
@@ -251,6 +246,7 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
           word_count += words_per_packet;
           accumulated_data = "";
           packets_to_process.clear();
+          std::cout << client_info->client_id << " : Request Completed" << std::endl;
         }
         else
         {
@@ -281,8 +277,6 @@ void beb(int attempts, int time_slot_len)
   }
 
   int backoff_time = time_slot_len * generate_random_integer(0, ((int)pow(2, attempts) - 1)); // Generate random backoff time
-  std::cout << "Backoff time: " << backoff_time << "ms" << std::endl;
-  // std::this_thread::sleep_for(std::chrono::milliseconds(backoff_time));
   sleep(backoff_time / 1000);
 }
 // Binary Exponential Backoff
@@ -379,6 +373,7 @@ void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *cl
       break;
     }
   }
+  std::cout << client_info->client_id << " : Request Completed" << std::endl;
 }
 
 // Sensing and Binary Exponential Backoff
@@ -422,8 +417,7 @@ void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info)
       std::cout << client_sock_fd << " : Server status is idle, sending request" << std::endl;
       std::string req_payload = std::to_string(client_info->offset) + "\n";
 
-      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) <
-          -1)
+      if (send(client_sock_fd, req_payload.c_str(), req_payload.length(), 0) < -1)
       {
         perror("Client request failed");
         exit(EXIT_FAILURE);
@@ -520,25 +514,20 @@ void *client_thread_slotted_aloha(void *arg) // Client thread function
   pthread_exit(nullptr);                                    // Exit thread
 }
 
-void *
-client_thread_binary_exponential_backoff(void *arg) // Client thread function
+void *client_thread_binary_exponential_backoff(void *arg) // Client thread function
 {
-  ClientInfo *client_info =
-      static_cast<ClientInfo *>(arg);       // Cast argument to ClientInfo pointer
-  int client_sock_fd = connect_to_server(); // Connect to server
-  request_words_binary_exponential_backoff(
-      client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);     // Print word frequency
-  pthread_exit(nullptr);            // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg);              // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                              // Connect to server
+  request_words_binary_exponential_backoff(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                                          // Print word frequency
+  pthread_exit(nullptr);                                                 // Exit thread
 }
 
 void *client_thread_sensing_and_beb(void *arg) // Client thread function
 {
-  ClientInfo *client_info =
-      static_cast<ClientInfo *>(arg);       // Cast argument to ClientInfo pointer
-  int client_sock_fd = connect_to_server(); // Connect to server
-  request_words_sensing_and_beb(client_sock_fd,
-                                client_info); // Request words from server
-  print_word_freq(client_info);               // Print word frequency
-  pthread_exit(nullptr);                      // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg);   // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                   // Connect to server
+  request_words_sensing_and_beb(client_sock_fd, client_info); // Request words from server
+  print_word_freq(client_info);                               // Print word frequency
+  pthread_exit(nullptr);                                      // Exit thread
 }
