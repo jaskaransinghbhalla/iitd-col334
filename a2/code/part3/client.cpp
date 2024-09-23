@@ -43,9 +43,9 @@ void read_config() // Read configuration file
     }
 }
 
-void intialize_client(int client_id, ClientInfo *client_info) // Initialize client information
+void intialize_client(ClientInfo *client_info) // Initialize client information
 {
-    client_info->client_id = client_id;                       // Set client ID
+    client_info->client_id = -1;                       // Set client ID
     client_info->offset = 0;                                  // Set offset to 0
     client_info->wordFrequency.clear();                       // Clear word frequency map
     client_info->num_word_per_request = num_word_per_request; // Set number of words per request
@@ -59,12 +59,6 @@ void intialize_client(int client_id, ClientInfo *client_info) // Initialize clie
 
 void handle_clients(int num_clients, int protocol) // Create threads for num clients
 {
-    // Set the client thread based on the protocol
-    // void *_Nullable client_thread(void *_Nullable arg); // Function prototype for client thread
-    // void *client_thread(void *arg); // Standard function prototype in C++
-
-    // Declare a client_thread function pointer
-    // void *_Nullable (*client_thread)(void *_Nullable);
     void *(*client_thread)(void *);
     if (protocol == 0)
     {
@@ -85,9 +79,10 @@ void handle_clients(int num_clients, int protocol) // Create threads for num cli
     // Create threads for each client
     for (int i = 0; i < num_clients; ++i)
     {
-        intialize_client(i + 1, &client_infos[i]);                                          // Initialize client information
+        intialize_client(&client_infos[i]);                                          // Initialize client information
         int result = pthread_create(&threads[i], nullptr, client_thread, &client_infos[i]); // Create a new thread for the client
-        if(i == 0){
+        if (i == 0)
+        {
             sleep(1);
         }
         if (result != 0) // Check if thread creation was successful

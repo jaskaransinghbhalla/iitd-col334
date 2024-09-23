@@ -176,8 +176,9 @@ bool aloha_should_send_request(ClientInfo *client_info)
   return false;
 }
 
-void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
+void request_words_slotted_aloha(ClientInfo *client_info)
 {
+  int client_sock_fd = client_info->client_id;
   char buffer[BUFFER_SIZE] = {0};
   bool eof = false;
 
@@ -250,7 +251,7 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
 
         if (*buffer_temp == '\n')
         {
-          if (accumulated_data == "HUH!\n" || accumulated_data == "HUH!")
+          if (accumulated_data == "HUH!")
           {
             std::cout << client_sock_fd << " : Collision : " << client_info->offset << std::endl;
             accumulated_data = "";
@@ -307,11 +308,8 @@ void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info)
         break;
       }
     }
-    else
-    {
-      continue;
-    }
   }
+
   close(client_sock_fd);
 }
 
@@ -319,8 +317,13 @@ void *client_thread_slotted_aloha(void *arg) // Client thread function
 {
   ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
   int client_sock_fd = connect_to_server();                 // Connect to server
-  request_words_slotted_aloha(client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);                             // Print word frequency
+  client_info->latest_request_sent_timestamp = 0;           // Set latest request timestamp to 0
+  client_info->client_id = client_sock_fd;                  // Set client ID
+
+  request_words_slotted_aloha(client_info); // Request words from server
+
+  print_word_freq(client_info); // Print word frequency
+
   std::cout << client_info->client_id << " : Finished" << std::endl;
   pthread_exit(nullptr); // Exit thread
 }
@@ -338,8 +341,9 @@ void beb(int attempts, int time_slot_len)
   sleep(backoff_time / 1000);
 }
 
-void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *client_info)
+void request_words_binary_exponential_backoff(ClientInfo *client_info)
 {
+  int client_sock_fd = client_info->client_id;
   char buffer[BUFFER_SIZE] = {0};
   bool eof = false;
   int attempts = 0;
@@ -434,16 +438,19 @@ void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *cl
 
 void *client_thread_binary_exponential_backoff(void *arg) // Client thread function
 {
-  ClientInfo *client_info = static_cast<ClientInfo *>(arg);              // Cast argument to ClientInfo pointer
-  int client_sock_fd = connect_to_server();                              // Connect to server
-  request_words_binary_exponential_backoff(client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);                                          // Print word frequency
-  pthread_exit(nullptr);                                                 // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                 // Connect to server
+  client_info->latest_request_sent_timestamp = 0;           // Set latest request timestamp to 0
+  client_info->client_id = client_sock_fd;                  // Set client ID
+  request_words_binary_exponential_backoff(client_info);    // Request words from server
+  print_word_freq(client_info);                             // Print word frequency
+  pthread_exit(nullptr);                                    // Exit thread
 }
 
 ////////////////////////////// Sensing and Binary Exponential Backoff/////////////////////////////////
-void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info)
+void request_words_sensing_and_beb(ClientInfo *client_info)
 {
+  int client_sock_fd = client_info->client_id;
   int attempts = 0;
   char buffer[BUFFER_SIZE] = {0};
   char sense_buffer[5] = {0};
@@ -568,9 +575,11 @@ void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info)
 
 void *client_thread_sensing_and_beb(void *arg) // Client thread function
 {
-  ClientInfo *client_info = static_cast<ClientInfo *>(arg);   // Cast argument to ClientInfo pointer
-  int client_sock_fd = connect_to_server();                   // Connect to server
-  request_words_sensing_and_beb(client_sock_fd, client_info); // Request words from server
-  print_word_freq(client_info);                               // Print word frequency
-  pthread_exit(nullptr);                                      // Exit thread
+  ClientInfo *client_info = static_cast<ClientInfo *>(arg); // Cast argument to ClientInfo pointer
+  int client_sock_fd = connect_to_server();                 // Connect to server
+  client_info->latest_request_sent_timestamp = 0;           // Set latest request timestamp to 0
+  client_info->client_id = client_sock_fd;                  // Set client ID
+  request_words_sensing_and_beb(client_info);               // Request words from server
+  print_word_freq(client_info);                             // Print word frequency
+  pthread_exit(nullptr);                                    // Exit thread
 }

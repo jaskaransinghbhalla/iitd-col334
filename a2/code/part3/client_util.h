@@ -23,9 +23,9 @@ struct ClientInfo
 
 // Function prototypes
 int connect_to_server();
-void request_words_slotted_aloha(int client_sock_fd, ClientInfo *client_info);
-void request_words_binary_exponential_backoff(int client_sock_fd, ClientInfo *client_info);
-void request_words_sensing_and_beb(int client_sock_fd, ClientInfo *client_info);
+void request_words_slotted_aloha(ClientInfo *client_info);
+void request_words_binary_exponential_backoff(ClientInfo *client_info);
+void request_words_sensing_and_beb(ClientInfo *client_info);
 void print_word_freq(const ClientInfo *client_info);
 void *client_thread_slotted_aloha(void *arg);
 void *client_thread_binary_exponential_backoff(void *arg);

@@ -13,7 +13,7 @@
 #include <sys/socket.h> // Includes core functions and structures for socket programming
 #include <unistd.h>     // Provides access to the POSIX operating system API
 
-int done = 0;
+int clients_done = 0;
 
 // Constants
 int port;
@@ -42,11 +42,8 @@ struct server_info
   int start_time = 0;
   int last_concurrent_request_time = 0;
 };
-
 struct server_info server_info;
-
-pthread_mutex_t server_info_status_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t server_info_lcrt_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t server_info_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 // Client Info
 struct thread_data
@@ -54,9 +51,7 @@ struct thread_data
   int client_socket;
 };
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////// Utility functions //////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void read_config()
 {
@@ -104,80 +99,51 @@ void read_words()
   s += EOF;
   words.push_back(s);
 }
-
-bool handle_client_request(int client_socket) // Basil
+void handle_client_request(int client_socket)
 {
-  pthread_mutex_lock(&server_info_status_mutex);
-  if (server_info.last_concurrent_request_time > server_info.start_time)
-  {
-    // Collision detected, stop processing
-    collision_detected = true;
-    pthread_mutex_unlock(&server_info_status_mutex);
-    return true;
-  }
-  pthread_mutex_unlock(&server_info_status_mutex);
-
   char buffer[BUFFER_SIZE] = {0};
+  memset(buffer, 0, BUFFER_SIZE);
 
-  memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
-
+  // Check for incoming data with a timeout
   fd_set read_fds;
   struct timeval timeout;
-
-  // Initialize the file descriptor set
   FD_ZERO(&read_fds);
   FD_SET(client_socket, &read_fds);
-
-  // Set timeout to 5 seconds
   timeout.tv_sec = 2;
   timeout.tv_usec = 0;
-
-  // Wait for the socket to be ready for reading
   int select_result = select(client_socket + 1, &read_fds, NULL, NULL, &timeout);
 
   if (select_result > 0 && FD_ISSET(client_socket, &read_fds))
   {
     int valread = read(client_socket, buffer, BUFFER_SIZE);
     if (valread <= 0)
-      return false;
+    {
+      std::cout << client_socket << " : Client disconnected" << std::endl;
+      return;
+    }
   }
   else if (select_result == 0)
   {
-    // Timeout occurred
     std::cout << client_socket << " : Timeout" << std::endl;
-    return false;
-  }
-  else
-  {
-    // Error occurred
-    perror("select error");
-    return false;
+    return;
   }
 
   int offset = std::stoi(buffer);
-  std::cout << client_socket << " : Recieved : " << offset << std::endl;
-
   if (offset >= words.size())
   {
-    // If the offset is too large, sends "$$\n" to the client, indicating an
     // invalid offset
-    if (send(client_socket, "$$\n", 3, 0) < -1)
-    {
-      perror("Could not send packet");
-      exit(EXIT_FAILURE);
-    }
-    return true;
+    send(client_socket, "$$\n", 3, 0);
+    return;
   }
 
-  // Valid offset
   bool eof = false;
-
-  for (int word_count = 0; word_count < num_word_per_request && !eof && !collision_detected;) // Loop to send the requested words to the client
+  int word_count = 0;
+  std::vector<std::string> packets;
+  while (word_count < num_word_per_request && !eof)
   {
-
-    std::string packet; // Packet to be sent to the client
-
-    for (int packet_count = 0; packet_count < words_per_packet && word_count < num_word_per_request && !eof && !collision_detected; packet_count++, word_count++)
+    int packet_count = 0;
+    std::string packet;
+    while (packet_count < words_per_packet && word_count < num_word_per_request && !eof)
     {
       std::string word = words[offset + word_count];
       packet += word;
@@ -190,26 +156,113 @@ bool handle_client_request(int client_socket) // Basil
         eof = true;
         break;
       }
+
+      packet_count++;
+      word_count++;
     }
 
     packet.pop_back();      // Remove the last comma
     packet = packet + "\n"; // Add a newline character at the end of the packet
+    packets.push_back(packet);
+  }
 
-    if (send(client_socket, packet.c_str(), packet.length(), 0) < -1)
+  for (const auto &packet : packets)
+  {
+    if (send(client_socket, packet.c_str(), packet.length(), 0) < 0)
     {
       perror("Could not send packet");
-      exit(EXIT_FAILURE);
-    } // Send the packet to the client
+      return;
+    }
   }
 
-  if (collision_detected)
-  {
-    return false;
-  }
-
-  std::cout << "" << client_socket << " : Handled :" << offset << std::endl;
-  return true;
+  std::cout << client_socket << " : Sent :" << offset << std::endl;
 }
+// bool handle_client_request(int client_socket) // Basil
+// {
+//   bool s = false;
+//   char buffer[BUFFER_SIZE] = {0};
+//   memset(buffer, 0, BUFFER_SIZE); // Clear the buffer
+
+//   // Check
+//   fd_set read_fds;
+//   struct timeval timeout;
+//   FD_ZERO(&read_fds);
+//   FD_SET(client_socket, &read_fds);
+//   timeout.tv_sec = 2;
+//   timeout.tv_usec = 0;
+//   int select_result = select(client_socket + 1, &read_fds, NULL, NULL, &timeout);
+//   if (select_result > 0 && FD_ISSET(client_socket, &read_fds))
+//   {
+//     int valread = read(client_socket, buffer, BUFFER_SIZE);
+//     if (valread <= 0)
+//       return false;
+//   }
+//   else if (select_result == 0)
+//   {
+//     std::cout << client_socket << " : Timeout" << std::endl;
+//     return false;
+//   }
+
+//   int offset = std::stoi(buffer);
+//   if (offset >= words.size())
+//   {
+//     // invalid offset
+//     if (send(client_socket, "$$\n", 3, 0) < -1)
+//     {
+//       perror("Could not send packet");
+//       exit(EXIT_FAILURE);
+//     }
+//     return false;
+//   }
+
+//   bool eof = false;
+//   int word_count = 0;
+//   std::vector<std::string> packets;
+//   while (word_count < num_word_per_request && !eof)
+//   {
+//     int packet_count = 0;
+//     std::string packet;
+//     while (packet_count < words_per_packet && word_count < num_word_per_request && !eof)
+//     {
+//       std::string word = words[offset + word_count];
+//       packet += word;
+//       packet += ",";
+
+//       std::string s = "";
+//       s += EOF;
+//       if (word == s)
+//       {
+//         eof = true;
+//         break;
+//       }
+
+//       packet_count++;
+//       word_count++;
+//     }
+
+//     packet.pop_back();      // Remove the last comma
+//     packet = packet + "\n"; // Add a newline character at the end of the packet
+//     packets.push_back(packet);
+//   }
+
+//   if (collision_detected)
+//   {
+//     return false;
+//   }
+
+//   for (const auto &packet : packets)
+//   {
+//     if (send(client_socket, packet.c_str(), packet.length(), 0) < 0)
+//     {
+//       perror("Could not send packet");
+//       exit(EXIT_FAILURE);
+//     } // Send the packet to the client
+//   }
+//   s = true;
+
+//   std::cout << "" << client_socket << " : Sent :" << offset << std::endl;
+//   return s;
+// }
 
 bool check_control_req(int client_socket)
 {
@@ -254,135 +307,198 @@ bool check_control_req(int client_socket)
   if (r == 6 && strcmp(temp_buffer, "BUSY?\n") == 0)
   {
     memset(temp_buffer, 0, 6); // Clear the buffer
-    read(client_socket, temp_buffer, 6);
+    recv(client_socket, temp_buffer, 6, MSG_DONTWAIT);
     return true;
   }
 
   return false;
 }
 
+// void handle_client_request(int client_socket)
+// {
+//   char buffer[BUFFER_SIZE] = {0};
+//   memset(buffer, 0, BUFFER_SIZE);
+
+//   // Check for incoming data with a timeout
+//   fd_set read_fds;
+//   struct timeval timeout;
+//   FD_ZERO(&read_fds);
+//   FD_SET(client_socket, &read_fds);
+//   timeout.tv_sec = 2;
+//   timeout.tv_usec = 0;
+//   int select_result = select(client_socket + 1, &read_fds, NULL, NULL, &timeout);
+
+//   if (select_result > 0 && FD_ISSET(client_socket, &read_fds))
+//   {
+//     int valread = read(client_socket, buffer, BUFFER_SIZE);
+//     if (valread <= 0)
+//     {
+//       std::cout << client_socket << " : Client disconnected" << std::endl;
+//       return;
+//     }
+//   }
+//   else if (select_result == 0)
+//   {
+//     std::cout << client_socket << " : Timeout" << std::endl;
+//     return;
+//   }
+
+//   int offset = std::stoi(buffer);
+//   if (offset >= words.size())
+//   {
+//     // invalid offset
+//     send(client_socket, "$$\n", 3, 0);
+//     return;
+//   }
+
+//   bool eof = false;
+//   int word_count = 0;
+//   std::vector<std::string> packets;
+//   while (word_count < num_word_per_request && !eof)
+//   {
+//     // ... (packet creation logic remains the same)
+//   }
+
+//   for (const auto &packet : packets)
+//   {
+//     if (send(client_socket, packet.c_str(), packet.length(), 0) < 0)
+//     {
+//       perror("Could not send packet");
+//       return;
+//     }
+//   }
+
+//   std::cout << client_socket << " : Sent :" << offset << std::endl;
+// }
 void handle_client_requests(int client_socket)
 {
-
-  int total_words_sent = 0;
-  bool is_collision = false;
-
-  while (total_words_sent < words.size())
+  while (true)
   {
+    std::cout << client_socket << " : Handling request" << std::endl;
     bool is_control_request = check_control_req(client_socket);
-    if (pthread_mutex_trylock(&server_info_status_mutex) == 0) // Try to acquire the lock
+
+    pthread_mutex_lock(&server_info_mutex);
+
+    if (server_info.status == IDLE && is_control_request)
     {
-      // Successfully acquired the lock
-      if (server_info.status == IDLE)
-      {
-        // Server is idle, we can process this request
-        if (is_control_request)
-        {
-          send(client_socket, "IDLE\n", 5, 0);
-          pthread_mutex_unlock(&server_info_status_mutex);
-          continue;
-        }
+      pthread_mutex_unlock(&server_info_mutex);
+      send(client_socket, "IDLE\n", 5, 0);
+    }
+    else if (server_info.status == IDLE && !is_control_request)
+    {
+      server_info.status = BUSY;
+      server_info.client_socket = client_socket;
+      server_info.start_time = get_time_in_milliseconds();
+      pthread_mutex_unlock(&server_info_mutex);
 
-        server_info.status = BUSY;
-        server_info.client_socket = client_socket;
-        server_info.start_time = get_time_in_milliseconds();
-        is_collision = false;
-        collision_detected = false;
-        pthread_mutex_unlock(&server_info_status_mutex);
+      handle_client_request(client_socket);
 
-        // Handle the client request
-
-        bool s = handle_client_request(client_socket);
-        // if (!s)
-        // {
-        //   server_info.status = IDLE;
-        //   server_info.client_socket = -1;
-        //   server_info.start_time = 0;
-        //   collision_detected = false;
-        //   send(client_socket, "HUH!\n", 5, 0);
-        //   continue;
-        // }
-
-        // Check if a collision occurred during handling
-        if (collision_detected)
-        {
-          is_collision = true;
-        }
-        else
-        {
-          // Reset server status after successful handling
-
-          pthread_mutex_lock(&server_info_status_mutex);
-
-          server_info.status = IDLE;
-          server_info.client_socket = -1;
-          server_info.start_time = 0;
-          collision_detected = false;
-          is_collision = false;
-
-          pthread_mutex_unlock(&server_info_status_mutex);
-
-          total_words_sent += num_word_per_request;
-        }
-      }
-      else
-      {
-        // Server is busy, this is a collision
-        is_collision = true;
-        pthread_mutex_unlock(&server_info_status_mutex);
-      }
+      pthread_mutex_lock(&server_info_mutex);
+      server_info.status = IDLE;
+      server_info.client_socket = -1;
+      server_info.start_time = 0;
+      pthread_mutex_unlock(&server_info_mutex);
     }
     else
     {
-      // Couldn't acquire the lock, this is also a collision
-      is_collision = true;
-    }
-
-    if (is_collision)
-    {
-      if (is_control_request)
-      {
-        send(client_socket, "BUSY\n", 5, 0);
-        continue;
-      }
-
-      // Handle collision
-      pthread_mutex_lock(&server_info_status_mutex);
-      std::cout << client_socket << " : Collision detected : " << server_info.client_socket << std::endl;
-      pthread_mutex_unlock(&server_info_status_mutex);
-
-      pthread_mutex_lock(&server_info_lcrt_mutex);
+      // Collision detected
       long long current_time = get_time_in_milliseconds();
       server_info.last_concurrent_request_time = current_time;
-      pthread_mutex_unlock(&server_info_lcrt_mutex);
 
-      // Set the collision flag to stop any ongoing client handling
-      collision_detected = true;
+      std::cout << client_socket << " : Collision detected" << std::endl;
 
       // Send "HUH!" to the client that caused the collision
       send(client_socket, "HUH!\n", 5, 0);
-      std::cout << client_socket << " : Sent HUH!" << std::endl;
 
-      // Send "HUH!" to the client being served (if there is one)
-      pthread_mutex_lock(&server_info_status_mutex);
-      if (server_info.client_socket != -1 && server_info.client_socket != client_socket)
+      // Send "HUH!" to the client that was being served (if any)
+      if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
       {
         send(server_info.client_socket, "HUH!\n", 5, 0);
         std::cout << server_info.client_socket << " : Sent HUH!" << std::endl;
       }
+
+      std::cout << client_socket << " : Sent HUH!" << std::endl;
+
       // Reset server status
       server_info.status = IDLE;
       server_info.client_socket = -1;
       server_info.start_time = 0;
-      collision_detected = false;
-      is_collision = false;
-
-      pthread_mutex_unlock(&server_info_status_mutex);
+      pthread_mutex_unlock(&server_info_mutex);
 
       std::cout << client_socket << " : Collision Handled" << std::endl;
     }
+
+    // Add a small delay to prevent tight looping
+    usleep(1000); // Sleep for 1 millisecond
   }
 }
+// void handle_client_requests(int client_socket)
+// {
+//   while (true)
+//   {
+//     std::cout << client_socket << " : Handling request" << std::endl;
+//     bool is_control_request = check_control_req(client_socket);
+
+//     pthread_mutex_lock(&server_info_mutex);
+
+//     if (server_info.status == IDLE && is_control_request)
+//     {
+//       pthread_mutex_unlock(&server_info_mutex);
+//       send(client_socket, "IDLE\n", 5, 0);
+//     }
+//     else if (server_info.status == IDLE && !is_control_request)
+//     {
+//       server_info.status = BUSY;
+//       server_info.client_socket = client_socket;
+//       server_info.start_time = get_time_in_milliseconds();
+//       pthread_mutex_unlock(&server_info_mutex);
+
+//       handle_client_request(client_socket);
+
+//       pthread_mutex_lock(&server_info_mutex);
+//       server_info.status = IDLE;
+//       server_info.client_socket = -1;
+//       server_info.start_time = 0;
+//       pthread_mutex_unlock(&server_info_mutex);
+//     }
+//     else
+//     {
+//       // Collision detected
+//       pthread_mutex_lock(&server_info_mutex);
+//       long long current_time = get_time_in_milliseconds();
+//       server_info.last_concurrent_request_time = current_time;
+//       pthread_mutex_unlock(&server_info_mutex);
+
+//       std::cout << client_socket << " : Collision detected" << std::endl;
+
+//       // Send "HUH!" to the client that caused the collision
+//       send(client_socket, "HUH!\n", 5, 0);
+
+//       // Send "HUH!" to the client that was being served (if any)
+//       pthread_mutex_lock(&server_info_mutex);
+//       if (server_info.status == BUSY && server_info.client_socket != -1 && server_info.client_socket != client_socket)
+//       {
+//         send(server_info.client_socket, "HUH!\n", 5, 0);
+//         std::cout << server_info.client_socket << " : Sent HUH!" << std::endl;
+//       }
+//       pthread_mutex_unlock(&server_info_mutex);
+
+//       std::cout << client_socket << " : Sent HUH!" << std::endl;
+
+//       // Reset server status
+
+//       server_info.status = IDLE;
+//       server_info.client_socket = -1;
+//       server_info.start_time = 0;
+//       pthread_mutex_unlock(&server_info_mutex);
+
+//       std::cout << client_socket << " : Collision Handled" << std::endl;
+//     }
+
+//     // Add a small delay to prevent tight looping
+//     usleep(1000); // Sleep for 1 millisecond
+//   }
+// }
 
 void *handle_client_thread(void *arg)
 {
@@ -394,7 +510,7 @@ void *handle_client_thread(void *arg)
 
   std::cout << "" << client_socket << " : Thread finished" << std::endl;
 
-  std::cout << "Clients Done : " << ++done << std::endl;
+  std::cout << "Clients Done : " << ++clients_done << std::endl;
 
   close(client_socket);
 
