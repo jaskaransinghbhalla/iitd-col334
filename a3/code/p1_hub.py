@@ -27,10 +27,10 @@ class HubController(app_manager.RyuApp):
     """
     
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER) 
-    def packet_in_handler(self, ev):
+    def packet_in_handler(self, event):
         
         #  an object that represents a packet_in data structure.
-        msg = ev.msg 
+        msg = event.msg 
         
         # msg.dp is an object that represents a datapath (switch)
         dp = msg.datapath

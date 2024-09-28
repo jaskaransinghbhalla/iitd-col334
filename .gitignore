@@ -1,1 +1,48 @@
 **/.DS_Store
+**/__pycache__
+
+# Virtual environments
+venv/
+env/
+*.venv/
+
+# IDE files
+.idea/
+.vscode/
+
+# Compiled Python files
+*.pyc
+*.pyo
+*.pyd
+
+# C extensions
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Unit test / coverage reports
+htmlcov/
+.coverage
+.tox/
+.noseids
+
+# Translations
+*.mo
+*.pot
+
+# Documentation
+docs/_build/
+
+# Cache files
+*.cache
+*.log
+
+# Miscellaneous
+*.bak
+*.swp
+*.tmp
+*.pydevproject
