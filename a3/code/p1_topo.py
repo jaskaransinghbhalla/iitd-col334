@@ -3,7 +3,7 @@ from mininet.net import Mininet
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.node import RemoteController, OVSSwitch
-
+from mininet.clean import cleanup
 class CustomTopo(Topo):
     def build(self):
         # Add two switches
@@ -45,6 +45,7 @@ def run():
 
 if __name__ == '__main__':
     # Set log level to display Mininet output
+    # cleanup()
     setLogLevel('info')
     run()
 

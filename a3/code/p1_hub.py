@@ -1,15 +1,17 @@
+# Imports
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_0
 
+
 class HubController(app_manager.RyuApp):
 
     # Open Flow Protocol version coming from RYU
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
-    # Constructor
+    # RYU Application Constructor
     def __init__(self, *args, **kwargs):
         super(HubController, self).__init__(*args, **kwargs)
 
@@ -24,36 +26,43 @@ class HubController(app_manager.RyuApp):
     The second argument indicates the state of the switch. 
     You probably want to ignore packet_in messages before the negotiation between Ryu and the switch is finished. 
     Using 'MAIN_DISPATCHER' as the second argument means this function is called only after the negotiation completes.
+    That is when the application is on normal status
     """
-    
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER) 
-    def packet_in_handler(self, event):
-        
-        #  an object that represents a packet_in data structure.
-        msg = event.msg 
-        
-        # msg.dp is an object that represents a datapath (switch)
-        dp = msg.datapath
-        
-        # dp.ofproto and dp.ofproto_parser are objects that represent the OpenFlow protocol that Ryu and the switch negotiated
-        ofp = dp.ofproto
-        ofp_parser = dp.ofproto_parser
 
-        # OFPActionOutput class is used with a packet_out message to specify a switch port that you want to send the packet out of. 
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
+    def packet_in_handler(self, event):
+
+        # an object that represents a packet_in data structure.
+        msg = event.msg
+
+        # msg.dp is an object that represents a datapath (switch)
+        datapath = msg.datapath
+
+        # ofproto and ofproto_parser are objects that represent the OpenFlow protocol that Ryu and the switch negotiated
+        # ofproto is an object in Ryu that holds OpenFlow protocol constants
+        ofp = datapath.ofproto
+        # ofproto_parser provides the tools needed to construct and parse OpenFlow messages
+        # •	When the controller wants to send a specific OpenFlow message (e.g., to install a flow or to query statistics), ofproto_parser helps to construct that message in a format that the switch understands.
+        # •	Similarly, when the controller receives an OpenFlow message from a switch (e.g., Packet-In or Features Reply), ofproto_parser helps to decode and interpret the message.
+        ofp_parser = datapath.ofproto_parser
+
+        # OFPActionOutput class is used with a packet_out message to specify a switch port that you want to send the packet out of.
         # This application uses the OFPP_FLOOD flag to indicate that the packet should be sent out on all ports
         actions = [ofp_parser.OFPActionOutput(ofp.OFPP_FLOOD)]
 
         data = None
         if msg.buffer_id == ofp.OFP_NO_BUFFER:
-             data = msg.data
+            data = msg.data
 
         # OFPPacketOut class is used to build a packet_out message.
         out = ofp_parser.OFPPacketOut(
-            datapath=dp, buffer_id=msg.buffer_id, in_port=msg.in_port,
-            actions=actions, data = data)
-        
-        # If you call Datapath class's send_msg method with a OpenFlow message class object, 
-        # Ryu builds and sends the on-wire data format to the switch.
-        dp.send_msg(out)
- 
-        
+            datapath=datapath,
+            buffer_id=msg.buffer_id,
+            in_port=msg.in_port,
+            actions=actions,
+            data=data,
+        )
+        # print("hello")
+        # If you call Datapath class's send_msg method with a OpenFlow message class object,
+        # Ryu builds and sends the data to the switch and tells it what to perform the actions
+        datapath.send_msg(out)
