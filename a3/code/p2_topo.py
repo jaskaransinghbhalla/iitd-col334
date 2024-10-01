@@ -5,6 +5,7 @@ from mininet.net import Mininet
 from mininet.node import OVSSwitch, RemoteController
 from mininet.log import setLogLevel, info
 from mininet.cli import CLI
+from mininet.clean import cleanup
 
 class CustomTopo(Topo):
     """Custom topology with 4 switches forming a cycle and 1 host per switch."""
@@ -49,6 +50,7 @@ def run():
     net.stop()
 
 if __name__ == '__main__':
+    cleanup()
     # Set log level to display Mininet output
     setLogLevel('info')
     run()
