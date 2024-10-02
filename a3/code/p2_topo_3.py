@@ -18,8 +18,8 @@ class ComplexTopo(Topo):
         s2 = self.addSwitch('s2')
         s3 = self.addSwitch('s3')
         s4 = self.addSwitch('s4')
-        s5 = self.addSwitch('s5')
-        s6 = self.addSwitch('s6')
+        # s5 = self.addSwitch('s5')
+        # s6 = self.addSwitch('s6')
 
         # Create 6 hosts
         h1 = self.addHost('h1')
@@ -34,12 +34,12 @@ class ComplexTopo(Topo):
         h10 = self.addHost('h10')
         h11 = self.addHost('h11')
         h12 = self.addHost('h12')
-        h13 = self.addHost('h13')
-        h14 = self.addHost('h14')
-        h15 = self.addHost('h15')
-        h16 = self.addHost('h16')
-        h17 = self.addHost('h17')
-        h18 = self.addHost('h18')
+        # h13 = self.addHost('h13')
+        # h14 = self.addHost('h14')
+        # h15 = self.addHost('h15')
+        # h16 = self.addHost('h16')
+        # h17 = self.addHost('h17')
+        # h18 = self.addHost('h18')
 
         # Connect each host to its respective switch
         self.addLink(h1, s1)
@@ -54,23 +54,28 @@ class ComplexTopo(Topo):
         self.addLink(h10, s4)
         self.addLink(h11, s4)
         self.addLink(h12, s4)
-        self.addLink(h13, s5)
-        self.addLink(h14, s5)
-        self.addLink(h15, s5)
-        self.addLink(h16, s6)
-        self.addLink(h17, s6)
-        self.addLink(h18, s6)
+        # self.addLink(h13, s5)
+        # self.addLink(h14, s5)
+        # self.addLink(h15, s5)
+        # self.addLink(h16, s6)
+        # self.addLink(h17, s6)
+        # self.addLink(h18, s6)
         
 
 
         # Connect switches to form a complex topology
         self.addLink(s1, s2)
         self.addLink(s2, s3)
+        self.addLink(s1, s3)
+        self.addLink(s2, s4)
         self.addLink(s3, s4)
-        self.addLink(s4, s5)
-        self.addLink(s5, s6)
-        self.addLink(s6, s1)
-        self.addLink(s3, s5)
+        # self.addLink(s3, s4)
+        # self.addLink(s4, s5)
+        # self.addLink(s5, s1)
+        # self.addLink(s3, s6)
+        # self.addLink(s3, s4)
+        # self.addLink(s4, s6)
+        # self.addLink(s6, s1)  # Closing the loop
 
         # Additional connections to create more complexity and potential loops
         # self.addLink(s1, s3)

@@ -71,6 +71,14 @@ class ComplexTopo(Topo):
         self.addLink(s5, s6)
         self.addLink(s6, s1)
         self.addLink(s3, s5)
+        self.addLink(s1, s4)
+        self.addLink(s2, s6)
+        self.addLink(s3, s6)
+        self.addLink(s2, s5)
+        self.addLink(s3, s1)
+        self.addLink(s5, s1)
+        self.addLink(s2, s4)
+        self.addLink(s6, s4)
 
         # Additional connections to create more complexity and potential loops
         # self.addLink(s1, s3)
