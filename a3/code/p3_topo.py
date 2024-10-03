@@ -5,15 +5,16 @@ from mininet.node import RemoteController, OVSKernelSwitch
 from mininet.link import TCLink
 from mininet.topo import Topo
 from mininet.cli import CLI
+from mininet.log import info
 
 class CustomTopo(Topo):
 
     def build(self):
         # Create four switches
-        s1 = self.addSwitch('s1', protocols='OpenFlow13')
-        s2 = self.addSwitch('s2', protocols='OpenFlow13')
-        s3 = self.addSwitch('s3', protocols='OpenFlow13')
-        s4 = self.addSwitch('s4', protocols='OpenFlow13')
+        s1 = self.addSwitch('s1')
+        s2 = self.addSwitch('s2')
+        s3 = self.addSwitch('s3')
+        s4 = self.addSwitch('s4')
 
         # Create four hosts, one for each switch
         h1 = self.addHost('h1')
@@ -40,20 +41,22 @@ def run():
     # Notice: Do not specify a controller here. We'll add it later.
     net = Mininet(topo=topo, link=TCLink, switch=OVSKernelSwitch, build=False)
 
+    # After the network is started, connect to the remote controller
+    controller = net.addController('c0', controller=RemoteController, ip='127.0.0.1', port=6633)
+
     # Build and start the topology without connecting to any controller
     net.build()
     net.start()
-
-    # After the network is started, connect to the remote controller
-    controller = net.addController('c0', controller=RemoteController, ip='127.0.0.1', port=6633)
 
     # Reconnect all switches to the remote controller
     for switch in net.switches:
         switch.start([controller])
 
     # Drop the user into the CLI for testing
+    info('*** Running CLI\n')
     CLI(net)
-
+    
+    info('*** Stopping network\n')
     # Stop the network after exiting the CLI
     net.stop()
 

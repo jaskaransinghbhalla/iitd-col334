@@ -1,5 +1,4 @@
 # Imports
-import time
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER
@@ -18,11 +17,11 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super(SpanningTreeLearningSwitch, self).__init__(*args, **kwargs)
-        self.topology_api_app = self
-        self.switches = []
+        self.blocked_ports = set()
         self.links = []
         self.mac_to_port = {}
-        self.blocked_ports = set()
+        self.switches = []
+        self.topology_api_app = self
 
     # Spanning Tree Construction
     @set_ev_cls(event.EventSwitchEnter)
@@ -42,19 +41,19 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
                 graph.setdefault(int(dst), []).append(int(src))
         visited = set()
         spanning_tree = []
-        print("-------")
-        print("Graph")
-        print(graph)
-        print("-------")
+        # print("-------")
+        # print("Graph")
+        # print(graph)
+        # print("-------")
         start_switch = self.switches[0].dp.id
-        print("start_switch", start_switch)
+        # print("start_switch", start_switch)
         self.prims(graph, start_switch, visited, spanning_tree)
-        print("-------")
-        print("Spanning-Tree")
-        print(spanning_tree)
-        print("-------")
+        # print("-------")
+        # print("Spanning-Tree")
+        # print(spanning_tree)
+        # print("-------")
         self.block_ports(spanning_tree)
-        print("-------")
+        # print("-------")
         # print("Blocked Ports")
         # for dpid, port_no in self.blocked_ports:
         #     print(f"DPID: {dpid}, Port: {port_no}")
