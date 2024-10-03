@@ -62,7 +62,6 @@ class ShortestPathRouting(app_manager.RyuApp):
         self.switches = get_switch(self.topology_api_app, None)
         self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
         print(get_all_link(self.topology_api_app))
-        # time.sleep(5000000)
         
         # Graph Construction
         
@@ -82,16 +81,13 @@ class ShortestPathRouting(app_manager.RyuApp):
             if self.lldp_active:
                 self.send_lldp_packets_on_all_ports(switch.dp)
         self.create_spanning_tree()
-        
-
-        
+    
     def create_spanning_tree(self):
         
         # Spanning Tree
         self.prims()
         self.block_ports(self.spanning_tree)
         
-    
     def prims(self):
         visited = set()
         start = self.switches[0].dp.id
@@ -241,8 +237,8 @@ class ShortestPathRouting(app_manager.RyuApp):
     
     def dijkstra(self, graph, start):
         # Initialize the distance dictionary with infinity
-        distances = {node: float('inf') for node in graph}
-        distances[start] = 0  # Distance to the start node is 0
+        distances = {node: [float('inf'), None] for node in graph}
+        distances[start] = [0, None]  # Distance to the start node is 0
 
         # Priority queue: (distance to the node, node)
         pq = [(0, start)]
@@ -251,16 +247,21 @@ class ShortestPathRouting(app_manager.RyuApp):
             current_distance, current_node = heapq.heappop(pq)
 
             # If the distance is greater than the recorded shortest path, skip it
-            if current_distance > distances[current_node]:
+            if current_distance > distances[current_node][0]:
                 continue
 
             # Explore neighbors
-            for neighbor, weight in graph[current_node].items():
+            for neighbor, info in graph[current_node].items():
+                weight = info[0]
+                if(current_node == start):
+                    port = info[1]
+                else :
+                    port = distances[current_node][1]
                 distance = current_distance + weight
 
                 # If a shorter path to the neighbor is found
-                if distance < distances[neighbor]:
-                    distances[neighbor] = distance
+                if distance < distances[neighbor][0]:
+                    distances[neighbor] = [distance, port]
                     heapq.heappush(pq, (distance, neighbor))
 
         return distances
@@ -280,7 +281,6 @@ class ShortestPathRouting(app_manager.RyuApp):
             if self.lldp_active:
                 self.handle_lldp_packet_in(datapath, msg, pkt)
             return
-        
        
         dst = eth.dst
         src = eth.src
@@ -365,8 +365,8 @@ class ShortestPathRouting(app_manager.RyuApp):
             link_delay = round((end_time - start_time) * 1000, 0)  # Convert to milliseconds and round to 2 decimal places
 
             #    Store the graph in w_graph
-            self.w_graph.setdefault(src_chassis, {})[datapath.id] = link_delay
-            self.w_graph.setdefault(datapath.id, {})[src_chassis] = link_delay
+            self.w_graph.setdefault(src_chassis, {})[datapath.id] = [link_delay, src_port_id]
+            self.w_graph.setdefault(datapath.id, {})[src_chassis] = [link_delay, msg.in_port]
             
             print(
                 "LLDP Packet Received",
