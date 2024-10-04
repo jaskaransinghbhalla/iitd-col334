@@ -12,7 +12,7 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import packet
 from ryu.ofproto import ofproto_v1_0
 from ryu.topology import event
-from ryu.topology.api import get_switch, get_all_link
+from ryu.topology.api import get_switch, get_all_link, get_all_host
 import heapq
 import struct
 import threading
@@ -39,6 +39,7 @@ class ShortestPathRouting(app_manager.RyuApp):
         self.graph = {}
         self.links = []
         self.switches = []
+        self.hosts = {}
         self.topology_api_app = self
 
         # Shortest Path
@@ -57,30 +58,15 @@ class ShortestPathRouting(app_manager.RyuApp):
 
     @set_ev_cls(event.EventSwitchEnter)
     def get_topology_data(self, event):
-
         # Switches and Links
         self.switches = get_switch(self.topology_api_app, None)
-        self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
-        time.sleep(1)
-
-        # Graph Construction
-
-        graph = {}
-        for link in self.links:
-            src = link["src"]["dpid"]
-            dst = link["dst"]["dpid"]
-            if int(dst) not in graph.get(int(src), []):
-                graph.setdefault(int(src), []).append(int(dst))
-            if int(src) not in graph.get(int(dst), []):
-                graph.setdefault(int(dst), []).append(int(src))
-        self.graph = graph
 
         # Send LLDP Packets
+        print("LLDP Listening Started")
 
         for switch in self.switches:
             if self.lldp_active:
                 self.send_lldp_packets_on_all_ports(switch.dp)
-        # self.create_spanning_tree()
 
     def send_lldp_packets_on_all_ports(self, datapath):
 
@@ -132,29 +118,63 @@ class ShortestPathRouting(app_manager.RyuApp):
         return lldp_pkt.data  # Return raw packet b`ytes without decoding
 
     def lldp_timer(self):
-        print("LLDP Listening Started")
         time.sleep(self.lldp_duration)  # Wait for the duration
+        self.on_lldp_complete()
+       
+    def on_lldp_complete(self):
         self.lldp_active = False  # Stop handling LLDP packets
-        self.cal_shortest_path(self.w_graph)
         print("LLDP Listening Stopped.")
         print("--------------------------------")
+        
+        self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
+        
+        print("Hosts")
+        self.hosts = {}
+        for host in get_all_host(self.topology_api_app):
+            self.hosts[host.mac] = {}
+            self.hosts[host.mac]["datapath"] = host.port.dpid
+            self.hosts[host.mac]["port"] = host.port.port_no
+        pp(self.hosts)
+        print("--------------------------------")
+        
+        # Graph Construction
+        self.create_graph()
+        
         print("Graph")
         pp(self.graph)
         print("--------------------------------")
+        
+        # Link Delay Weighted Graph
+        
         print("Link-delay Weighted Graph")
         pp(self.w_graph)
         print("--------------------------------")
+
         # print("Spanning-Tree")
         # pp(self.spanning_tree)
         # print("--------------------------------")
         # print("Blocked Ports")
         # for dpid, port_no in self.blocked_ports:
         # pp(f"DPID: {dpid}, Port: {port_no}")
+    
+    
         # print("--------------------------------")
+        self.cal_shortest_path(self.w_graph)
         print("Shortest Path")
         pp(self.shortest_path)
         print("--------------------------------")
-
+        
+    def create_graph(self):
+        graph = {}
+        for link in self.links:
+            src = link["src"]["dpid"]
+            dst = link["dst"]["dpid"]
+            if int(dst) not in graph.get(int(src), []):
+                graph.setdefault(int(src), []).append(int(dst))
+            if int(src) not in graph.get(int(dst), []):
+                graph.setdefault(int(dst), []).append(int(src))
+        self.graph = graph
+    
     # Spanning Tree
 
     def create_spanning_tree(self):
@@ -413,7 +433,6 @@ class ShortestPathRouting(app_manager.RyuApp):
             actions=actions,
         )
         datapath.send_msg(mod)
-
 
     def send_lldp_packet(self, datapath, port_no, data):
 
