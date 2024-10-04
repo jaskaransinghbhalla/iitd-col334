@@ -59,9 +59,9 @@ class ShortestPathRouting(app_manager.RyuApp):
     def get_topology_data(self, event):
 
         # Switches and Links
-        time.sleep(1)
         self.switches = get_switch(self.topology_api_app, None)
         self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
+        time.sleep(1)
 
         # Graph Construction
 
@@ -92,11 +92,7 @@ class ShortestPathRouting(app_manager.RyuApp):
                 # Build LLDP packet for each port
                 lldp_pkt = self.build_lldp_packet(datapath, port_no)
                 self.src_lldp_timestamps[(datapath.id, port_no)] = time.time()
-                self.send_packet(
-                    datapath, port_no, lldp_pkt
-                )  # Create an OpenFlow PacketOut message to send the LLDP packet
-
-                # Save the time.time() in src_lldp_timestamps
+                self.send_lldp_packet(datapath, port_no, lldp_pkt)
 
                 print(f"LLDP Packet Sent {datapath.id} {port_no}", time.time())
 
@@ -136,15 +132,16 @@ class ShortestPathRouting(app_manager.RyuApp):
         return lldp_pkt.data  # Return raw packet b`ytes without decoding
 
     def lldp_timer(self):
+        print("LLDP Listening Started")
         time.sleep(self.lldp_duration)  # Wait for the duration
         self.lldp_active = False  # Stop handling LLDP packets
         self.cal_shortest_path(self.w_graph)
-        print("LLDP Timer expired.")
+        print("LLDP Listening Stopped.")
         print("--------------------------------")
         print("Graph")
         pp(self.graph)
         print("--------------------------------")
-        print("Modified Graph")
+        print("Link-delay Weighted Graph")
         pp(self.w_graph)
         print("--------------------------------")
         # print("Spanning-Tree")
@@ -245,70 +242,70 @@ class ShortestPathRouting(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, event):
+        # Event Handling
         msg = event.msg
         datapath = msg.datapath
         ofp = datapath.ofproto
-        ofp_parser = datapath.ofproto_parser
 
-        pkt = packet.Packet(msg.data)  # Parsing the packet to get the Ethernet frame
-        eth = pkt.get_protocol(
-            ethernet.ethernet
-        )  # Get ethernet/link layer frame from the packet
+        # LLDP Packet Handling
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        src_mac = eth.src
+        dst_mac = eth.dst
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
             if self.lldp_active:
                 self.handle_lldp_packet_in(datapath, msg, pkt)
             return
 
-        dst = eth.dst
-        src = eth.src
-        dpid = datapath.id
-
-        self.mac_to_port.setdefault(dpid, {})
-
-        # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[dpid][src] = msg.in_port
-        out_ports = []
-        actions = []
-        flooding = False
+        # Initializing and updating Host Mac Address - Switch Port table
+        self.mac_to_port.setdefault(datapath.id, {})
+        self.mac_to_port[datapath.id][src_mac] = msg.in_port
 
         # Port Management
+        flood = False
+        mac_to_switch_port_mapping = self.mac_to_port[datapath.id]
+        out_ports = []
 
-        if dst in self.mac_to_port[dpid]:
-            out_ports = [self.mac_to_port[dpid][dst]]
+        """
+        Section to be Editted
+        """
+
+        # Check if the destination MAC address is in the MAC to switch port mapping
+        if dst_mac in mac_to_switch_port_mapping:
+            # If the destination MAC address is found, get the corresponding output port
+            out_port = mac_to_switch_port_mapping[dst_mac]
+            out_ports.append(out_port)
         else:
-            all_ports = set(datapath.ports.keys())
-            excluded_ports = {msg.in_port, 65534}
-            for id, port_no in self.blocked_ports:
-                if id == dpid:
-                    excluded_ports.add(port_no)
-            out_ports = all_ports - excluded_ports
-            flooding = True
+            # If the destination MAC address is not found, flood the packet to all ports except the input port and blocked ports
+            flood = True
+            # Get all the ports of the switch
+            ports_all = set(datapath.ports.keys())
+            # Exclude the input port and the special OFPP_CONTROLLER port (65534)
+            ports_to_exclude = {msg.in_port, 65534}
+            # Exclude the blocked ports specific to this switch
+            for datapath_id_for_blocked_port, port_no in self.blocked_ports:
+                if datapath_id_for_blocked_port == datapath.id:
+                    ports_to_exclude.add(port_no)
+            # Calculate the output ports by subtracting the excluded ports from all ports
+            out_ports = list(ports_all - ports_to_exclude)
 
-        # Get all available ports
-
-        # Exclude the ports
-        # out_ports = all_ports - excluded_ports
-        # If there are valid ports, forward the packet; otherwise, drop it
-        if out_ports:
-            actions = [ofp_parser.OFPActionOutput(port) for port in out_ports]
-        else:
-            actions = []  # Drop packet
-        # install a flow to avoid packet_in next time
-        if not flooding:
-            self.add_flow(datapath, msg.in_port, dst, src, actions)
-            # print("Updated Flow Table")
-
-        data = None
+        # Data Parsing
         if msg.buffer_id == ofp.OFP_NO_BUFFER:
             data = msg.data
-        out = ofp_parser.OFPPacketOut(
-            datapath=datapath,
-            buffer_id=msg.buffer_id,
-            in_port=msg.in_port,
-            actions=actions,
-            data=data,
-        )
-        datapath.send_msg(out)
+        else:
+            data = None
+
+        """
+        Section to be Editted
+        """
+
+        # Flow Management and Packet Sending
+        for out_port in out_ports:
+            # Flow Management
+            if not flood:
+                self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
+            # Packet Sending
+            self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
 
     def handle_lldp_packet_in(self, datapath, msg, pkt):
         # Parse the LLDP packet
@@ -354,26 +351,53 @@ class ShortestPathRouting(app_manager.RyuApp):
             print(
                 "LLDP Packet Received",
                 datapath.id,
-                # msg.in_port,
                 src_chassis,
-                # src_port_id,
                 link_delay,
             )
 
-            # Extract neighbor switch information from the LLDP packet
-            neighbor_dpid = src_chassis
-            neighbor_port = src_port_id
+    def send_packet(self, datapath, in_port, out_port, data, buffer_id):
+        """
+        Sends a packet to a specified port on a datapath.
 
-            #   Continue processing, such as updating network topology or logging neighbor connection
-            # self.update_topology(src_dpid, src_port, neighbor_dpid, src_port, neighbor_port)
+        Parameters:
+        - datapath (Datapath): The datapath to send the packet from.
+        - port_no (int): The port number to send the packet to.
+        - data (bytes): The packet data to be sent.
 
-    def add_flow(self, datapath, in_port, dst, src, actions):
+        Returns:
+        None
+        """
+        parser = datapath.ofproto_parser
+        actions = [parser.OFPActionOutput(out_port)]
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=buffer_id,
+            in_port=in_port,
+            actions=actions,
+            data=data,
+        )
+        datapath.send_msg(out)
+
+    def add_flow(self, datapath, in_port, out_port, src, dst):
+        """
+        Add a flow to the switch's flow table.
+        Parameters:
+        - datapath: The datapath object representing the switch.
+        - in_port: The input port number.
+        - out_port: The output port number.
+        - src: The source MAC address.
+        - dst: The destination MAC address.
+        Returns:
+            None
+        """
         ofp = datapath.ofproto
         ofp_parser = datapath.ofproto_parser
 
         match = datapath.ofproto_parser.OFPMatch(
             in_port=in_port, dl_dst=haddr_to_bin(dst), dl_src=haddr_to_bin(src)
         )
+
+        actions = [ofp_parser.OFPActionOutput(out_port)]
 
         # Modification
         # The following code is modified to add the flow with the OFPFF_SEND_FLOW_REM flag set.
@@ -390,7 +414,8 @@ class ShortestPathRouting(app_manager.RyuApp):
         )
         datapath.send_msg(mod)
 
-    def send_packet(self, datapath, port_no, data):
+
+    def send_lldp_packet(self, datapath, port_no, data):
 
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
