@@ -1,5 +1,4 @@
 # Imports
-import pprint
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import MAIN_DISPATCHER
@@ -70,6 +69,8 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
         self.switches = get_switch(self.topology_api_app, None)
         self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
 
+        time.sleep(1)
+
         # Graph Construction
         graph = {}
         for link in self.links:
@@ -79,10 +80,8 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
                 graph.setdefault(int(src), []).append(int(dst))
             if int(src) not in graph.get(int(dst), []):
                 graph.setdefault(int(dst), []).append(int(src))
-        if(graph == {}):
-            return
         self.graph = graph
-        
+
         print("--------------------")
         print("Graph")
         pp(self.graph)
@@ -139,6 +138,8 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
                         - If the neighbor is not in the 'visited' set, add the edge (destination, neighbor) to 'edges'.
             7. Return None.
         """
+        if self.graph == {}:
+            return
 
         edges = []
         start = self.switches[0].dp.id
@@ -242,6 +243,7 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
             # Calculate the output ports by subtracting the excluded ports from all ports
             out_ports = list(ports_all - ports_to_exclude)
 
+        # Data Parsing
         # Check if the buffer ID is set to OFP_NO_BUFFER
         if msg.buffer_id == ofp.OFP_NO_BUFFER:
             # If the buffer ID is not set, it means the packet data is not buffered in the switch
@@ -250,14 +252,18 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
         else:
             data = None
 
+        # Flow Management and Packet Sending
         for out_port in out_ports:
+            # Flow Management
             if not flood:
+                
                 self.add_flow(
-                    datapath, src_mac, msg.in_port, dst_mac, out_port
+                    datapath, msg.in_port, out_port, src_mac, dst_mac
                 )  # Install a flow to avoid packet_in next time
-            self.send_packet(datapath, out_port, data)
+            # Packet Sending
+            self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
 
-    def send_packet(self, datapath, port_no, data):
+    def send_packet(self, datapath, in_port, out_port, data, buffer_id):
         """
         Sends a packet to a specified port on a datapath.
 
@@ -269,41 +275,37 @@ class SpanningTreeLearningSwitch(app_manager.RyuApp):
         Returns:
         None
         """
-        # Rest of the code...
-        ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-        actions = [parser.OFPActionOutput(port=port_no)]
+        actions = [parser.OFPActionOutput(out_port)]
         out = parser.OFPPacketOut(
             datapath=datapath,
-            buffer_id=ofproto.OFP_NO_BUFFER,
-            in_port=ofproto.OFPP_CONTROLLER,
+            buffer_id=buffer_id,
+            in_port=in_port,
             actions=actions,
             data=data,
         )
         datapath.send_msg(out)
 
-    def add_flow(self, datapath, src, in_port, dst, out_port):
+    def add_flow(self, datapath, in_port, out_port, src, dst):
         """
-        Add a flow entry to the switch's flow table.
-
+        Add a flow to the switch's flow table.
         Parameters:
-            datapath (OFPDatapath): The datapath of the switch.
-            in_port (int): The input port of the flow.
-            dst (str): The destination MAC address of the flow.
-            src (str): The source MAC address of the flow.
-            port (int): The output port of the flow.
-
+        - datapath: The datapath object representing the switch.
+        - in_port: The input port number.
+        - out_port: The output port number.
+        - src: The source MAC address.
+        - dst: The destination MAC address.
         Returns:
             None
         """
         ofp = datapath.ofproto
         ofp_parser = datapath.ofproto_parser
 
-        actions = [ofp_parser.OFPActionOutput(out_port)]
-
-        match = ofp_parser.OFPMatch(
+        match = datapath.ofproto_parser.OFPMatch(
             in_port=in_port, dl_dst=haddr_to_bin(dst), dl_src=haddr_to_bin(src)
         )
+
+        actions = [ofp_parser.OFPActionOutput(out_port)]
 
         # Modification
         # The following code is modified to add the flow with the OFPFF_SEND_FLOW_REM flag set.

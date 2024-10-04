@@ -79,23 +79,22 @@ class LearningSwitch(app_manager.RyuApp):
         
         # Flow Management
         if not flood:
-            self.add_flow(datapath, msg.in_port, out_port, dst_mac, src_mac)
+            self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
             
         # Packet Sending
         self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
 
-    def add_flow(self, datapath, in_port, out_port, dst, src):
+    def add_flow(self, datapath, in_port, out_port, src, dst):
         """
         Add a flow to the switch's flow table.
         Parameters:
         - datapath: The datapath object representing the switch.
         - in_port: The input port number.
         - out_port: The output port number.
-        - dst: The destination MAC address.
         - src: The source MAC address.
-        - actions: The list of actions to be performed on the packet.
+        - dst: The destination MAC address.
         Returns:
-        None
+            None
         """
         ofp = datapath.ofproto
         ofp_parser = datapath.ofproto_parser
@@ -133,9 +132,8 @@ class LearningSwitch(app_manager.RyuApp):
         Returns:
         None
         """
-        # Rest of the code...
         parser = datapath.ofproto_parser
-        actions = [parser.OFPActionOutput(port=out_port)]
+        actions = [parser.OFPActionOutput(out_port)]
         out = parser.OFPPacketOut(
             datapath=datapath,
             buffer_id=buffer_id,
