@@ -13,6 +13,13 @@ class HubController(app_manager.RyuApp):
 
     # RYU Application Constructor
     def __init__(self, *args, **kwargs):
+        """
+        Initializes a new instance of the HubController class.
+
+        Parameters:
+        *args: Variable length argument list.
+        **kwargs: Arbitrary keyword arguments.
+        """
         super(HubController, self).__init__(*args, **kwargs)
 
     """
@@ -31,38 +38,64 @@ class HubController(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, event):
+        """
+        Handle the packet_in event.
 
-        # an object that represents a packet_in data structure.
-        msg = event.msg
+        Parameters:
+        - event: An object that represents the packet_in event.
 
-        # msg.dp is an object that represents a datapath (switch)
-        datapath = msg.datapath
+        Returns:
+        None
+        """
+        # Event Parsing
+        msg = event.msg  # an object that represents a packet_in data structure.
+        datapath = (
+            msg.datapath
+        )  # msg.datapath is an object that represents a datapath (switch)
+        ofp = (
+            datapath.ofproto
+        )  # ofproto and ofproto_parser are objects that represent the OpenFlow protocol that Ryu and the switch negotiated. ofproto is an object in Ryu that holds OpenFlow protocol constants
 
-        # ofproto and ofproto_parser are objects that represent the OpenFlow protocol that Ryu and the switch negotiated
-        # ofproto is an object in Ryu that holds OpenFlow protocol constants
-        ofp = datapath.ofproto
-        # ofproto_parser provides the tools needed to construct and parse OpenFlow messages
+        # Data Parsing
+        # Check if the buffer ID is set to OFP_NO_BUFFER
+        if msg.buffer_id == ofp.OFP_NO_BUFFER:
+            # If the buffer ID is not set, it means the packet data is not buffered in the switch
+            # Therefore, we need to retrieve the packet data from the message object
+            data = msg.data
+        else:
+            data = None
+
+        self.send_packet(datapath, datapath.ofproto.OFPP_FLOOD, data)
+
+    def send_packet(self, datapath, out_port, data):
+        """
+        Sends a packet to a specified port on a datapath.
+
+        Parameters:
+        - datapath (Datapath): The datapath to send the packet from.
+        - port_no (int): The port number to send the packet to.
+        - data (bytes): The packet data to be sent.
+
+        Returns:
+        None
+        """
+        ofproto = datapath.ofproto
+        # parser provides the tools needed to construct and parse OpenFlow messages
         # •	When the controller wants to send a specific OpenFlow message (e.g., to install a flow or to query statistics), ofproto_parser helps to construct that message in a format that the switch understands.
         # •	Similarly, when the controller receives an OpenFlow message from a switch (e.g., Packet-In or Features Reply), ofproto_parser helps to decode and interpret the message.
-        ofp_parser = datapath.ofproto_parser
-
+        parser = datapath.ofproto_parser
         # OFPActionOutput class is used with a packet_out message to specify a switch port that you want to send the packet out of.
         # This application uses the OFPP_FLOOD flag to indicate that the packet should be sent out on all ports
-        actions = [ofp_parser.OFPActionOutput(ofp.OFPP_FLOOD)]
 
-        data = None
-        if msg.buffer_id == ofp.OFP_NO_BUFFER:
-            data = msg.data
-
+        actions = [parser.OFPActionOutput(out_port)]
         # OFPPacketOut class is used to build a packet_out message.
-        out = ofp_parser.OFPPacketOut(
+        out = parser.OFPPacketOut(
             datapath=datapath,
-            buffer_id=msg.buffer_id,
-            in_port=msg.in_port,
+            buffer_id=ofproto.OFP_NO_BUFFER,
+            in_port=ofproto.OFPP_CONTROLLER,
             actions=actions,
             data=data,
         )
-        # print("hello")
         # If you call Datapath class's send_msg method with a OpenFlow message class object,
         # Ryu builds and sends the data to the switch and tells it what to perform the actions
         datapath.send_msg(out)

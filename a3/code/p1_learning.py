@@ -13,69 +13,98 @@ from ryu.ofproto import ofproto_v1_0
 class LearningSwitch(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_0.OFP_VERSION]
 
+    # Initialzer
+
     def __init__(self, *args, **kwargs):
+        """
+        Initializes the LearningSwitch object.
+
+        Parameters:
+        *args: Variable length argument list.
+        **kwargs: Arbitrary keyword arguments.
+
+        Attributes:
+        mac_to_port (dict): Mac Address to Port table for Switch/RYU.
+        """
         super(LearningSwitch, self).__init__(*args, **kwargs)
-        # Mac Address to Port table for Switch/RYU
-        self.mac_to_port = {}
+        self.mac_to_port = {}  # Mac Address to Port table for Switch/RYU
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, event):
+        """
+        Handle incoming packet events.
+        Args:
+            event (Event): The event object containing the packet data.
+        Returns:
+            None
+        Raises:
+            None
+        """
+        # Event Parsing
         msg = event.msg
         datapath = msg.datapath
         ofp = datapath.ofproto
-        ofp_parser = datapath.ofproto_parser
 
-        # Parsing the packet to get the Ethernet frame
-        pkt = packet.Packet(msg.data)
-        # Get ethernet/link layer frame from the packet
-        eth = pkt.get_protocol(ethernet.ethernet)
+        # Packet Parsing
+        pkt = packet.Packet(msg.data)  # parsing the packet data
+        eth = pkt.get_protocol(
+            ethernet.ethernet
+        )  # get link layer frame from the packet
+        src_mac = eth.src
+        dst_mac = eth.dst
 
+        # LLDP Control
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
             # ignore lldp packet
             return
 
-        dst = eth.dst
-        src = eth.src
-
-        dpid = datapath.id
-        self.mac_to_port.setdefault(dpid, {})
-
-
-        # learn a mac address to avoid FLOOD next time.
-        self.mac_to_port[dpid][src] = msg.in_port
-
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
+        # Initializing and updating Host Mac Address - Switch Port table
+        self.mac_to_port.setdefault(datapath.id, {})
+        self.mac_to_port[datapath.id][src_mac] = msg.in_port
+        
+        # Port Management
+        flood = False
+        mac_to_switch_port_mapping = self.mac_to_port[datapath.id]
+        
+        if dst_mac in mac_to_switch_port_mapping:
+            out_port = mac_to_switch_port_mapping[dst_mac]
         else:
+            flood = True
             out_port = ofp.OFPP_FLOOD
-
-        actions = [datapath.ofproto_parser.OFPActionOutput(out_port)]
-
-        # install a flow to avoid packet_in next time
-        if out_port != ofp.OFPP_FLOOD:
-            self.add_flow(datapath, msg.in_port, dst, src, actions)
-
+            
+        # Data Parsing
         data = None
         if msg.buffer_id == ofp.OFP_NO_BUFFER:
             data = msg.data
+        
+        # Flow Management
+        if not flood:
+            self.add_flow(datapath, msg.in_port, out_port, dst_mac, src_mac)
+            
+        # Packet Sending
+        self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
 
-        out = datapath.ofproto_parser.OFPPacketOut(
-            datapath=datapath,
-            buffer_id=msg.buffer_id,
-            in_port=msg.in_port,
-            actions=actions,
-            data=data,
-        )
-        datapath.send_msg(out)
-
-    # Add flow to the switch
-    def add_flow(self, datapath, in_port, dst, src, actions):
+    def add_flow(self, datapath, in_port, out_port, dst, src):
+        """
+        Add a flow to the switch's flow table.
+        Parameters:
+        - datapath: The datapath object representing the switch.
+        - in_port: The input port number.
+        - out_port: The output port number.
+        - dst: The destination MAC address.
+        - src: The source MAC address.
+        - actions: The list of actions to be performed on the packet.
+        Returns:
+        None
+        """
         ofp = datapath.ofproto
         ofp_parser = datapath.ofproto_parser
 
         match = datapath.ofproto_parser.OFPMatch(
             in_port=in_port, dl_dst=haddr_to_bin(dst), dl_src=haddr_to_bin(src)
         )
+        
+        actions = [ofp_parser.OFPActionOutput(out_port)]
 
         # Modification
         # The following code is modified to add the flow with the OFPFF_SEND_FLOW_REM flag set.
@@ -91,3 +120,27 @@ class LearningSwitch(app_manager.RyuApp):
             actions=actions,
         )
         datapath.send_msg(mod)
+
+    def send_packet(self, datapath, in_port, out_port, data, buffer_id):
+        """
+        Sends a packet to a specified port on a datapath.
+
+        Parameters:
+        - datapath (Datapath): The datapath to send the packet from.
+        - port_no (int): The port number to send the packet to.
+        - data (bytes): The packet data to be sent.
+
+        Returns:
+        None
+        """
+        # Rest of the code...
+        parser = datapath.ofproto_parser
+        actions = [parser.OFPActionOutput(port=out_port)]
+        out = parser.OFPPacketOut(
+            datapath=datapath,
+            buffer_id=buffer_id,
+            in_port=in_port,
+            actions=actions,
+            data=data,
+        )
+        datapath.send_msg(out)
