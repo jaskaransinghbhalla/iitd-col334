@@ -9,7 +9,7 @@ from ryu.ofproto import ofproto_v1_0
 from ryu.topology import event
 from ryu.topology.api import get_switch, get_all_link
 import time
-from pprintpp import pprint as pp
+from pprintpp import pprint as pp # type: ignore
 
 
 class SpanningTreeLearningSwitch(app_manager.RyuApp):

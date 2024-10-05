@@ -6,10 +6,10 @@ from ryu.controller.handler import MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.lib import hub
 from ryu.lib.mac import haddr_to_bin
-from ryu.lib.packet import ethernet, lldp, ether_types, packet, ipv4, ipv6, arp, icmp
+from ryu.lib.packet import ethernet, lldp, ether_types, packet, ipv4, ipv6, arp
 from ryu.ofproto import ofproto_v1_0
 from ryu.topology import event
-from ryu.topology.api import get_switch, get_all_link, get_all_host
+from ryu.topology.api import get_switch, get_all_link
 import heapq
 import struct
 import time
@@ -75,7 +75,6 @@ class ShortestPathRouting(app_manager.RyuApp):
             self.stop_all_threads()
 
     def stop_all_threads(self):
-        """Stop all running threads."""
         if self.switch_threads:
             self.logger.info("Stopping all threads.")
 
@@ -110,7 +109,7 @@ class ShortestPathRouting(app_manager.RyuApp):
                     ofproto.OFP_NO_BUFFER,
                 )
 
-                print(f"LLDP Packet Sent {datapath.id} {port_no}")
+                # print(f"LLDP Packet Sent {datapath.id} {port_no}")
 
     def build_lldp_packet(self, datapath, port_no):
 
@@ -154,48 +153,48 @@ class ShortestPathRouting(app_manager.RyuApp):
 
     def on_lldp_complete(self):
 
-        print("--------------------------------")
+        # print("--------------------------------")
         #  Links
         self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
-        print("Hosts")
+        # print("Hosts")
         # pp(hosts)jj
-        pp(self.hosts)
-        print("--------------------------------")
+        # pp(self.hosts)
+        # print("--------------------------------")
 
         # Graph Construction
         self.create_graph()
 
-        print("Graph")
-        pp(self.graph)
-        print("--------------------------------")
+        # print("Graph")
+        # pp(self.graph)
+        # print("--------------------------------")
 
         # Link Delay Weighted Graph
 
-        print("Link-delay Weighted Graph")
-        pp(self.w_graph)
+        # print("Link-delay Weighted Graph")
+        # pp(self.w_graph)
 
         self.create_spanning_tree()
-        print("--------------------------------")
-        print("Spanning-Tree")
-        pp(self.spanning_tree)
+        # print("--------------------------------")
+        # print("Spanning-Tree")
+        # pp(self.spanning_tree)
 
-        print("--------------------------------")
-        print("Blocked Ports")
-        for dpid, port_no in self.blocked_ports:
-            pp(f"DPID: {dpid}, Port: {port_no}")
+        # print("--------------------------------")
+        # print("Blocked Ports")
+        # for dpid, port_no in self.blocked_ports:
+            # pp(f"DPID: {dpid}, Port: {port_no}")
 
-        print("--------------------------------")
+        # print("--------------------------------")
         self.cal_shortest_path(self.w_graph)
-        print("Shortest Path")
-        pp(self.shortest_path)
+        # print("Shortest Path")
+        # pp(self.shortest_path)
 
-        print("--------------------------------")
-        print("Shortest Path Trees")
-        pp(self.shortest_path_trees)
+        # print("--------------------------------")
+        # print("Shortest Path Trees")
+        # pp(self.shortest_path_trees)
 
-        print("--------------------------------")
-        print("Blocked Ports on SPT")
-        pp(self.blocked_ports_on_shortest_path_tree)
+        # print("--------------------------------")
+        # print("Blocked Ports on SPT")
+        # pp(self.blocked_ports_on_shortest_path_tree)
         self.lldp_active = False  # Stop handling LLDP packets
         print("LLDP Listening Stopped.")
 
@@ -373,18 +372,18 @@ class ShortestPathRouting(app_manager.RyuApp):
                 "src_port": msg.in_port,
             }
 
-            (print)(
-                "LLDP Packet Received",
-                datapath.id,
-                src_chassis,
-                link_delay,
-            )
+            # (print)(
+            #     "LLDP Packet Received",
+            #     datapath.id,
+            #     src_chassis,
+            #     link_delay,
+            # )
 
     def handle_arp_packet_in(self, datapath, msg):
-        print("------------------")
-        print("ARP Table")
-        pp(self.arp_table)
-        print("------------------")
+        # print("------------------")
+        # print("ARP Table")
+        # pp(self.arp_table)
+        # print("------------------")
         ofp = datapath.ofproto
 
         pkt = packet.Packet(msg.data)
@@ -405,7 +404,6 @@ class ShortestPathRouting(app_manager.RyuApp):
                     self.arp_table[src_ip] = src_mac
             
             if dst_ip in self.arp_table:
-                print("Entry1")
                 # Create ARP Reply
                 arq_reply_pkt = packet.Packet()
                 arq_reply_pkt.add_protocol(
@@ -430,7 +428,6 @@ class ShortestPathRouting(app_manager.RyuApp):
                 # Send ARP Reply
                 self.send_packet(datapath, ofp.OFPP_CONTROLLER, msg.in_port, arq_reply_pkt_data, ofp.OFP_NO_BUFFER)
             else:
-                print("--------Entry2")
                 # Flood in Spanning Tree
                 out_ports = []
                 
@@ -583,7 +580,7 @@ class ShortestPathRouting(app_manager.RyuApp):
             data=data,
         )
         datapath.send_msg(out)
-        self.logger.info(f"Packet sent from port {in_port} to port {out_port}")
+        # self.logger.info(f"Packet sent from port {in_port} to port {out_port}")
 
     def add_flow(self, datapath, in_port, out_port, src, dst):
         """
@@ -718,15 +715,13 @@ class ShortestPathRouting(app_manager.RyuApp):
                     f"Destination IP: {dst_ip}")
                 # Generate an array of strings from 224 to 239
                 filter = [str(i) for i in range(224, 240)]
+                
                 # Ignore IP addresses that start with 224 to 239
                 if dst_ip.startswith(tuple(filter)):
-                    print("Ignored")
                     return
                 elif dst_ip == "255:255:255:255":
-                    print("Ignored")
                     return
                 elif dst_mac == "ff:ff:ff:ff:ff:ff":
-                    print("Ignored")
                     return
                 else :
                     self.handle_common_packet_in(datapath, msg)
@@ -755,4 +750,3 @@ class ShortestPathRouting(app_manager.RyuApp):
         # Other Packets
         else:
             print("Other Packet", eth.ethertype)
-        print("Packet Out")
