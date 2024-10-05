@@ -53,7 +53,7 @@ class ShortestPathRouting(app_manager.RyuApp):
         self.blocked_ports = set()
         self.spanning_tree = []
 
-        hub.spawn(self.lldp_timer)
+        self.lldp_timer_thread = hub.spawn(self.lldp_timer)
 
         self.switch_threads = {}
         self.switch_stop_flags = {}
@@ -76,20 +76,12 @@ class ShortestPathRouting(app_manager.RyuApp):
 
     def switch_thread(self, dpid):
         while not self.switch_stop_flags[dpid]:
-            hub.sleep(2)
-            # Switches and Links
-            self.switches = get_switch(self.topology_api_app, None)
-            self.links = [
-                link.to_dict() for link in get_all_link(self.topology_api_app)
-            ]
-            hosts = get_all_host(self.topology_api_app)
-            self.hosts = {
-                host.mac: {"datapath": host.port.dpid, "port": host.port.port_no}
-                for host in hosts
-            }
-            # Send LLDP Packets
+            hub.sleep(0.5)
             print("LLDP Listening Started")
+            # Switches
+            self.switches = get_switch(self.topology_api_app, None)
 
+            # Send LLDP Packets
             for switch in self.switches:
                 if self.lldp_active:
                     self.send_lldp_packets_on_all_ports(switch.dp)
@@ -165,13 +157,21 @@ class ShortestPathRouting(app_manager.RyuApp):
     def lldp_timer(self):
         hub.sleep(self.lldp_duration)  # Wait for the duration
         self.on_lldp_complete()
+        hub.joinall([self.lldp_timer_thread])
 
     def on_lldp_complete(self):
         self.lldp_active = False  # Stop handling LLDP packets
         print("LLDP Listening Stopped.")
         print("--------------------------------")
-
+        #  Links
+        self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
+        # hosts = get_all_host(self.topology_api_app)
+        # self.hosts = {
+        #     host.mac: {"datapath": host.port.dpid, "port": host.port.port_no}
+        #     for host in hosts
+        # }
         print("Hosts")
+        # pp(hosts)
         pp(self.hosts)
         print("--------------------------------")
 
@@ -309,7 +309,10 @@ class ShortestPathRouting(app_manager.RyuApp):
         eth = pkt.get_protocol(ethernet.ethernet)
         src_mac = eth.src
         dst_mac = eth.dst
-        arp_pkt = pkt.get_protocol(arp.arp)
+        # arp_pkt = pkt.get_protocol(arp.arp)
+
+        # if arp_pkt:
+        #     self.logger.info("Received ARP packet from %s", arp_pkt.src_mac)
 
         # LLDP Packet Handling
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
@@ -317,18 +320,19 @@ class ShortestPathRouting(app_manager.RyuApp):
                 self.handle_lldp_packet_in(datapath, msg, pkt)
                 return
 
-        # # ARP Packet Handling
+        # ARP Packet Handling
         # elif arp_pkt:
         #     if arp_pkt.opcode == arp.ARP_REQUEST:
         #         # ARP Request Handling
         #         print("ARP Request Received")
-
         #         self.handle_arp_req(datapath, msg, arp_pkt)
+        #         return
         #     elif arp_pkt.opcode == arp.ARP_REPLY:
         #         # ARP Reply Handling
         #         print("ARP Reply Received")
         #         self.handle_arp_reply(datapath, msg, arp_pkt)
-
+        #         return
+        #
         # Initializing and updating Host Mac Address - Switch Port table
         self.mac_to_port.setdefault(datapath.id, {})
         self.mac_to_port[datapath.id][src_mac] = msg.in_port
@@ -504,74 +508,81 @@ class ShortestPathRouting(app_manager.RyuApp):
         )
         datapath.send_msg(out)
 
-    def handle_arp_req(self, datapath, msg, arp_pkt):
-        # Extract ARP request information
-        src_mac = arp_pkt.src_mac
-        src_ip = arp_pkt.src_ip
-        dst_ip = arp_pkt.dst_ip
+    # def handle_arp_req(self, datapath, msg, arp_pkt):
+    #     # Extract ARP request information
+    #     src_mac = arp_pkt.src_mac
+    #     src_ip = arp_pkt.src_ip
+    #     dst_ip = arp_pkt.dst_ip
 
-        # Check if the destination IP is in the hosts table
-        if dst_ip in self.hosts:
-            # Get the destination MAC address from the hosts table
-            dst_mac = self.hosts[dst_ip]["mac"]
+    #     # Check if the destination IP is in the hosts table
+    #     if dst_ip in self.hosts:
+    #         # Get the destination MAC address from the hosts table
+    #         dst_mac = self.hosts[dst_ip]["mac"]
 
-            # Create ARP reply packet
-            arp_reply = arp.arp(
-                opcode=arp.ARP_REPLY,
-                src_mac=dst_mac,
-                src_ip=dst_ip,
-                dst_mac=src_mac,
-                dst_ip=src_ip,
-            )
+    #         # Create ARP reply packet
+    #         arp_reply = arp.arp(
+    #             opcode=arp.ARP_REPLY,
+    #             src_mac=dst_mac,
+    #             src_ip=dst_ip,
+    #             dst_mac=src_mac,
+    #             dst_ip=src_ip,
+    #         )
 
-            # Create Ethernet frame
-            eth_reply = ethernet.ethernet(
-                dst=src_mac,
-                src=dst_mac,
-                ethertype=ether_types.ETH_TYPE_ARP,
-            )
+    #         # Create Ethernet frame
+    #         eth_reply = ethernet.ethernet(
+    #             dst=src_mac,
+    #             src=dst_mac,
+    #             ethertype=ether_types.ETH_TYPE_ARP,
+    #         )
 
-            # Create packet with ARP reply
-            pkt_reply = packet.Packet()
-            pkt_reply.add_protocol(eth_reply)
-            pkt_reply.add_protocol(arp_reply)
-            pkt_reply.serialize()
+    #         # Create packet with ARP reply
+    #         pkt_reply = packet.Packet()
+    #         pkt_reply.add_protocol(eth_reply)
+    #         pkt_reply.add_protocol(arp_reply)
+    #         pkt_reply.serialize()
 
-            # Send the ARP reply packet
-            self.send_packet(datapath, msg.in_port, pkt_reply.data, None)
+    #         # Send the ARP reply packet
+    #         self.send_packet(datapath, msg.in_port, pkt_reply.data, None)
 
-    def handle_arp_reply(self, datapath, msg, arp_pkt):
-        # Extract ARP reply information
-        src_mac = arp_pkt.src_mac
-        src_ip = arp_pkt.src_ip
-        dst_ip = arp_pkt.dst_ip
+    # def handle_arp_reply(self, datapath, msg, arp_pkt):
+    #     # Extract ARP reply information
+    #     src_mac = arp_pkt.src_mac
+    #     src_ip = arp_pkt.src_ip
+    #     dst_ip = arp_pkt.dst_ip
 
-        # Check if the destination IP is in the hosts table
-        if dst_ip in self.hosts:
-            # Get the destination MAC address from the hosts table
-            dst_mac = self.hosts[dst_ip]["mac"]
+    #     # Check if the destination IP is in the hosts table
+    #     if dst_ip in self.hosts:
+    #         # Get the destination MAC address from the hosts table
+    #         dst_mac = self.hosts[dst_ip]["mac"]
 
-            # Create ARP request packet
-            arp_request = arp.arp(
-                opcode=arp.ARP_REQUEST,
-                src_mac=src_mac,
-                src_ip=src_ip,
-                dst_mac=dst_mac,
-                dst_ip=dst_ip,
-            )
+    #         # Create ARP request packet
+    #         arp_request = arp.arp(
+    #             opcode=arp.ARP_REQUEST,
+    #             src_mac=src_mac,
+    #             src_ip=src_ip,
+    #             dst_mac=dst_mac,
+    #             dst_ip=dst_ip,
+    #         )
 
-            # Create Ethernet frame
-            eth_request = ethernet.ethernet(
-                dst=dst_mac,
-                src=src_mac,
-                ethertype=ether_types.ETH_TYPE_ARP,
-            )
+    #         # Create Ethernet frame
+    #         eth_request = ethernet.ethernet(
+    #             dst=dst_mac,
+    #             src=src_mac,
+    #             ethertype=ether_types.ETH_TYPE_ARP,
+    #         )
 
-            # Create packet with ARP request
-            pkt_request = packet.Packet()
-            pkt_request.add_protocol(eth_request)
-            pkt_request.add_protocol(arp_request)
-            pkt_request.serialize()
+    #         # Create packet with ARP request
+    #         pkt_request = packet.Packet()
+    #         pkt_request.add_protocol(eth_request)
+    #         pkt_request.add_protocol(arp_request)
+    #         pkt_request.serialize()
 
-            # Send the ARP request packet
-            self.send_packet(datapath, msg.in_port, pkt_request.data, None)
+    #         # Send the ARP request packet
+    #         self.send_packet(datapath, msg.in_port, pkt_request.data, None)
+
+    @set_ev_cls(event.EventHostAdd, MAIN_DISPATCHER)
+    def host_add_handler(self, ev):
+        self.hosts[ev.host.mac] = {
+            "datapath": ev.host.port.dpid,
+            "port": ev.host.port.port_no,
+        }
