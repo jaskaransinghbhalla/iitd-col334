@@ -6,11 +6,7 @@ from ryu.controller.handler import MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.lib import hub
 from ryu.lib.mac import haddr_to_bin
-from ryu.lib.packet import ether_types
-from ryu.lib.packet import ethernet, lldp
-from ryu.lib.packet import lldp
-from ryu.lib.packet import packet
-from ryu.lib.packet import packet
+from ryu.lib.packet import ethernet, lldp, ether_types, packet, ipv4, ipv6, arp, icmp
 from ryu.ofproto import ofproto_v1_0
 from ryu.topology import event
 from ryu.topology.api import get_switch, get_all_link, get_all_host
@@ -41,39 +37,29 @@ class ShortestPathRouting(app_manager.RyuApp):
         self.switches = []
         self.hosts = {}
         self.topology_api_app = self
+        self.arp_table = {}
 
         # Shortest Path
 
         self.w_graph = {}
         self.shortest_path = {}
+        self.shortest_path_pred = {}
+        self.shortest_path_trees = {}
+        self.blocked_ports_on_shortest_path_tree = {}
 
         # Spanning Tree
 
         self.blocked_ports = set()
         self.spanning_tree = []
-        
+        self.spt_mac_to_port = {}
+
         # LLDP Constants
 
         self.lldp_timer_thread = hub.spawn(self.lldp_timer)
-
         self.switch_threads = {}
         self.switch_stop_flags = {}
 
     # LLDP Packet and Graph construction
-    @set_ev_cls(event.EventSwitchEnter)
-    def on_switch_enter(self, event):
-        datapath = event.switch.dp
-        dpid = datapath.id  # Get switch ID
-
-        # Stop all previous threads
-        self.stop_all_threads()
-        hub.sleep(0.1)
-
-        # Create a new stop flag and spawn a new thread for the entering switch
-        self.switch_stop_flags[dpid] = False
-        self.logger.info(f"Switch {dpid} entered, starting a new thread.")
-        thread = hub.spawn(self.switch_thread, dpid)
-        self.switch_threads[dpid] = thread  # Save the new thread
 
     def switch_thread(self, dpid):
         while not self.switch_stop_flags[dpid]:
@@ -107,7 +93,7 @@ class ShortestPathRouting(app_manager.RyuApp):
             self.logger.info("All threads stopped.")
 
     def send_lldp_packets_on_all_ports(self, datapath):
-
+        ofproto = datapath.ofproto
         # Iterate through all the ports on the switch
         for port_no, port in datapath.ports.items():
 
@@ -116,9 +102,15 @@ class ShortestPathRouting(app_manager.RyuApp):
                 # Build LLDP packet for each port
                 lldp_pkt = self.build_lldp_packet(datapath, port_no)
                 self.src_lldp_timestamps[(datapath.id, port_no)] = time.time()
-                self.send_lldp_packet(datapath, port_no, lldp_pkt)
+                self.send_packet(
+                    datapath,
+                    ofproto.OFPP_CONTROLLER,
+                    port_no,
+                    lldp_pkt,
+                    ofproto.OFP_NO_BUFFER,
+                )
 
-                print(f"LLDP Packet Sent {datapath.id} {port_no}", time.time())
+                print(f"LLDP Packet Sent {datapath.id} {port_no}")
 
     def build_lldp_packet(self, datapath, port_no):
 
@@ -161,20 +153,12 @@ class ShortestPathRouting(app_manager.RyuApp):
         hub.joinall([self.lldp_timer_thread])
 
     def on_lldp_complete(self):
-        self.lldp_active = False  # Stop handling LLDP packets
-        print("LLDP Listening Stopped.")
+
         print("--------------------------------")
         #  Links
         self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
-        # Hosts
-        # hosts = get_all_host(self.topology_api_app)
-        # self.hosts = {
-        #     host.mac: {"datapath": host.port.dpid, "port": host.port.port_no}
-        #     for host in hosts
-        # }
         print("Hosts")
-        # pp(hosts)
-        print(self.hosts.keys())
+        # pp(hosts)jj
         pp(self.hosts)
         print("--------------------------------")
 
@@ -189,20 +173,31 @@ class ShortestPathRouting(app_manager.RyuApp):
 
         print("Link-delay Weighted Graph")
         pp(self.w_graph)
-        print("--------------------------------")
+
         self.create_spanning_tree()
+        print("--------------------------------")
         print("Spanning-Tree")
         pp(self.spanning_tree)
+
         print("--------------------------------")
         print("Blocked Ports")
         for dpid, port_no in self.blocked_ports:
             pp(f"DPID: {dpid}, Port: {port_no}")
 
-        # print("--------------------------------")
+        print("--------------------------------")
         self.cal_shortest_path(self.w_graph)
         print("Shortest Path")
         pp(self.shortest_path)
+
         print("--------------------------------")
+        print("Shortest Path Trees")
+        pp(self.shortest_path_trees)
+
+        print("--------------------------------")
+        print("Blocked Ports on SPT")
+        pp(self.blocked_ports_on_shortest_path_tree)
+        self.lldp_active = False  # Stop handling LLDP packets
+        print("LLDP Listening Stopped.")
 
     def create_graph(self):
         graph = {}
@@ -221,7 +216,7 @@ class ShortestPathRouting(app_manager.RyuApp):
 
         # Spanning Tree
         self.prims()
-        self.block_ports(self.spanning_tree)
+        self.get_ports_to_block()
 
     def prims(self):
         edges = []
@@ -247,7 +242,15 @@ class ShortestPathRouting(app_manager.RyuApp):
                     if neighbor not in visited:
                         edges.append((dst, neighbor))
 
-    def block_ports(self, spanning_tree):
+    def get_ports_to_block(self):
+        """
+        Retrieves the ports that need to be blocked based on the current spanning tree.
+
+        Returns:
+            set: A set of tuples representing the blocked ports. Each tuple contains the source
+            switch ID and the port number that needs to be blocked.
+        """
+        spanning_tree = self.spanning_tree
         self.blocked_ports.clear()  # Reset blocked ports
         for link in self.links:
             src = link["src"]["dpid"]
@@ -263,12 +266,20 @@ class ShortestPathRouting(app_manager.RyuApp):
 
     def cal_shortest_path(self, graph):
         for node in graph:
-            self.shortest_path[node] = self.dijkstra(graph, node)
+            self.shortest_path[node], self.shortest_path_pred[node] = self.dijkstra(
+                graph, node
+            )
+            spt = self.construct_shortest_path_tree(
+                self.shortest_path_pred[node], graph
+            )
+            self.shortest_path_trees[node] = spt
+            self.cal_blocked_ports_on_shortest_path_tree(node)
 
     def dijkstra(self, graph, start):
         # Initialize the distance dictionary with infinity
         distances = {node: [float("inf"), None] for node in graph}
         distances[start] = [0, None]  # Distance to the start node is 0
+        pred = {node: None for node in graph}
 
         # Priority queue: (distance to the node, node)
         pq = [(0, start)]
@@ -292,93 +303,34 @@ class ShortestPathRouting(app_manager.RyuApp):
                 # If a shorter path to the neighbor is found
                 if distance < distances[neighbor][0]:
                     distances[neighbor] = [distance, port]
+                    pred[neighbor] = current_node
                     heapq.heappush(pq, (distance, neighbor))
 
-        return distances
+        return distances, pred
 
-    # Packet In Handling
+    def construct_shortest_path_tree(self, pred, graph):
+        spt = {node: {} for node in graph}
 
-    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
-    def packet_in_handler(self, event):
-        # Event Handling
-        msg = event.msg
-        datapath = msg.datapath
-        ofp = datapath.ofproto
+        for node in graph:
+            if pred[node] is not None:
+                predecessor = pred[node]
+                info = graph[node][predecessor]
+                spt[predecessor][node] = info
+        return spt
 
-        # Print the type of packet
+    def cal_blocked_ports_on_shortest_path_tree(self, node):
+        blocked_ports = set()
+        for link in self.links:
+            src = link["src"]["dpid"]
+            dst = link["dst"]["dpid"]
 
-        # Link Layer
-        pkt = packet.Packet(msg.data)
-        eth = pkt.get_protocol(ethernet.ethernet)
-        src_mac = eth.src
-        dst_mac = eth.dst
+            if src == node:
+                if int(dst) not in self.shortest_path_trees[node][src]:
+                    blocked_ports.add((int(src), int(link["src"]["port_no"])))
+                    blocked_ports.add((int(dst), int(link["dst"]["port_no"])))
+        self.blocked_ports_on_shortest_path_tree[node] = blocked_ports
 
-        # LLDP Packet Handling
-        if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
-            if self.lldp_active:
-                self.handle_lldp_packet_in(datapath, msg, pkt)
-                return
-
-        self.mac_to_port.setdefault(datapath.id, {})
-        self.mac_to_port[datapath.id][src_mac] = msg.in_port
-
-        # Port Management
-        mac_to_switch_port_mapping = self.mac_to_port[datapath.id]
-        out_ports = []
-
-        """
-        Section to be Editted
-        """
-
-        # print packet info
-        # print(f"Packet in {datapath.id} {src_mac} {dst_mac}")
-        flood = False
-        # Check if the destination MAC address is in the MAC to switch port mapping
-        if dst_mac in mac_to_switch_port_mapping:
-            # If the destination MAC address is found, get the corresponding output port
-            out_port = mac_to_switch_port_mapping[dst_mac]
-            out_ports.append(out_port)
-        elif dst_mac in list(self.hosts.keys()):
-            print("Shortest path handled")
-            # Get the switch corresponding to dst_mac
-            dst_datapath = self.hosts[dst_mac]['datapath']
-            # Get the output port for the data to be sent to
-            out_port = self.shortest_path[datapath.id][dst_datapath][1]
-            print(type(out_port))
-            # Update the out_ports
-            out_ports.append(out_port)
-            # Save the dst_mac to port configuration
-            self.mac_to_port[datapath.id][dst_mac] = out_port
-        else:
-            # Spanning Tree
-            flood = True
-            # Broadcast MAC address
-            ports_all = set(datapath.ports.keys())
-            # Exclude the input port and the special OFPP_CONTROLLER port (65534)
-            ports_to_exclude = {msg.in_port, 65534}
-            # Exclude the blocked ports specific to this switch
-            for datapath_id_for_blocked_port, port_no in self.blocked_ports:
-                if datapath_id_for_blocked_port == datapath.id:
-                    ports_to_exclude.add(port_no)
-            # Calculate the output ports by subtracting the excluded ports from all ports
-            out_ports = list(ports_all - ports_to_exclude)
-
-        """
-        Section to be Editted
-        """
-        # Data Parsing
-        if msg.buffer_id == ofp.OFP_NO_BUFFER:
-            data = msg.data
-        else:
-            data = None
-
-        # Flow Management and Packet Sending
-        for out_port in out_ports:
-            # Flow Management
-            if not flood :
-                self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
-            # Packet Sending
-            self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
+    # Handling Packets
 
     def handle_lldp_packet_in(self, datapath, msg, pkt):
         # Parse the LLDP packet
@@ -428,6 +380,187 @@ class ShortestPathRouting(app_manager.RyuApp):
                 link_delay,
             )
 
+    def handle_arp_packet_in(self, datapath, msg):
+        print("------------------")
+        print("ARP Table")
+        pp(self.arp_table)
+        print("------------------")
+        ofp = datapath.ofproto
+
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        arp_pkt = pkt.get_protocol(arp.arp)
+
+        src_mac = eth.src
+        dst_mac = eth.dst
+
+        src_ip = arp_pkt.src_ip
+        dst_ip = arp_pkt.dst_ip
+
+        if arp_pkt.opcode == arp.ARP_REQUEST:
+            
+            # Update ARP Table
+            if src_ip not in self.arp_table:
+                if not src_ip.startswith("169.254"):
+                    self.arp_table[src_ip] = src_mac
+            
+            if dst_ip in self.arp_table:
+                print("Entry1")
+                # Create ARP Reply
+                arq_reply_pkt = packet.Packet()
+                arq_reply_pkt.add_protocol(
+                    ethernet.ethernet(
+                        ethertype=ether_types.ETH_TYPE_ARP,
+                        dst=src_mac,
+                        src=self.arp_table[dst_ip],
+                    )
+                )
+                arq_reply_pkt.add_protocol(
+                    arp.arp(
+                        opcode=arp.ARP_REPLY,
+                        src_mac=self.arp_table[dst_ip],
+                        src_ip=dst_ip,
+                        dst_mac=src_mac,
+                        dst_ip=src_ip,
+                    )
+                )
+                arq_reply_pkt.serialize()
+                arq_reply_pkt_data = arq_reply_pkt.data
+                
+                # Send ARP Reply
+                self.send_packet(datapath, ofp.OFPP_CONTROLLER, msg.in_port, arq_reply_pkt_data, ofp.OFP_NO_BUFFER)
+            else:
+                print("--------Entry2")
+                # Flood in Spanning Tree
+                out_ports = []
+                
+                self.spt_mac_to_port.setdefault(datapath.id, {})
+                self.spt_mac_to_port[datapath.id][src_mac] = msg.in_port
+
+                mac_to_switch_port_mapping = self.spt_mac_to_port[datapath.id]
+                
+                if dst_mac in mac_to_switch_port_mapping:
+                    out_port = mac_to_switch_port_mapping[dst_mac]
+                    out_ports.append(out_port)
+                else:
+                    ports_all = set(datapath.ports.keys())
+                    ports_to_exclude = {msg.in_port, 65534}
+                    for datapath_id_for_blocked_port, port_no in self.blocked_ports:
+                        if datapath_id_for_blocked_port == datapath.id:
+                            ports_to_exclude.add(port_no)
+                    out_ports = list(ports_all - ports_to_exclude)
+
+                if msg.buffer_id == ofp.OFP_NO_BUFFER:
+                    data = msg.data
+                else:
+                    data = None
+
+                # Flow Management and Packet Sending
+                for out_port in out_ports:
+                    self.send_packet(
+                        datapath, msg.in_port, out_port, data, msg.buffer_id
+                    )
+            return
+
+        if arp_pkt.opcode == arp.ARP_REPLY:
+            # Update ARP Table
+            out_ports = []
+            if src_ip not in self.arp_table:
+                self.arp_table[src_ip] = src_mac
+            
+            self.spt_mac_to_port.setdefault(datapath.id, {})
+            self.spt_mac_to_port[datapath.id][src_mac] = msg.in_port
+            
+            mac_to_switch_port_mapping = self.spt_mac_to_port[datapath.id]
+            
+            if dst_mac in mac_to_switch_port_mapping:
+                out_port = mac_to_switch_port_mapping[dst_mac]
+                out_ports.append(out_port)
+                
+            if msg.buffer_id == ofp.OFP_NO_BUFFER:
+                    data = msg.data
+            else:
+                data = None
+
+            # Flow Management and Packet Sending
+            for out_port in out_ports:
+                self.send_packet(
+                    datapath, msg.in_port, out_port, data, msg.buffer_id
+                )
+            
+            return
+
+    def handle_common_packet_in(self, datapath, msg):
+        ofp = datapath.ofproto
+
+        pkt = packet.Packet(msg.data)
+        eth = pkt.get_protocol(ethernet.ethernet)
+        src_mac = eth.src
+        dst_mac = eth.dst
+
+        self.mac_to_port.setdefault(datapath.id, {})
+        self.mac_to_port[datapath.id][src_mac] = msg.in_port
+        # Port Management
+        mac_to_switch_port_mapping = self.mac_to_port[datapath.id]
+        out_ports = []
+        flood = False
+        # Check if the destination MAC address is in the MAC to switch port mapping
+
+        # if dst_mac in self.hosts.keys():
+
+        if dst_mac in mac_to_switch_port_mapping:
+            # If the destination MAC address is found, get the corresponding output port
+            out_port = mac_to_switch_port_mapping[dst_mac]
+            out_ports.append(out_port)
+        else:
+            # print("Shortest path handled")
+            # Get the switch corresponding to dst_mac
+            dst_datapath = self.hosts[dst_mac]["datapath"]
+            # Get the output port for the data to be sent to
+            out_port = self.shortest_path[datapath.id][dst_datapath][1]
+            if out_port == None:
+                all_ports = set(port.port_no for port in datapath.ports.values())
+                ports_to_exclude = {msg.in_port}
+                for each in self.shortest_path[datapath.id].values():
+                    if each[0] != dst_datapath:
+                        ports_to_exclude.add(each[1])
+                out_ports = list(all_ports - ports_to_exclude)
+            else:
+                # Update the out_ports
+                out_ports.append(out_port)
+                # print(out_ports, datapath.id, dst_datapath)
+                # Save the dst_mac to port configuration
+                self.mac_to_port[datapath.id][dst_mac] = out_port
+        # else:
+        #     # Flood Shortest path Tree
+        #     flood = True
+        #     all_ports = set(port.port_no for port in datapath.ports.values())
+        #     ports_to_exclude = {msg.in_port, 65534}
+        #     for (
+        #         datapath_id_for_blocked_port,
+        #         port_no,
+        #     ) in self.blocked_ports_on_shortest_path_tree[datapath.id]:
+        #         if datapath_id_for_blocked_port == datapath.id:
+        #             ports_to_exclude.add(port_no)
+        #     out_ports = list(all_ports - ports_to_exclude)
+        """
+        Section to be Editted
+        """
+        # Data Parsing
+        if msg.buffer_id == ofp.OFP_NO_BUFFER:
+            data = msg.data
+        else:
+            data = None
+
+        # Flow Management and Packet Sending
+        for out_port in out_ports:
+            # Flow Management
+            # if not flood:
+            # self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
+            # Packet Sending
+            self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
+        if(len(out_ports) == 1):
+            self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
     def send_packet(self, datapath, in_port, out_port, data, buffer_id):
         """
         Sends a packet to a specified port on a datapath.
@@ -450,6 +583,7 @@ class ShortestPathRouting(app_manager.RyuApp):
             data=data,
         )
         datapath.send_msg(out)
+        self.logger.info(f"Packet sent from port {in_port} to port {out_port}")
 
     def add_flow(self, datapath, in_port, out_port, src, dst):
         """
@@ -487,23 +621,138 @@ class ShortestPathRouting(app_manager.RyuApp):
         )
         datapath.send_msg(mod)
 
-    def send_lldp_packet(self, datapath, port_no, data):
+    # Event Handlers
 
-        ofproto = datapath.ofproto
-        parser = datapath.ofproto_parser
-        actions = [parser.OFPActionOutput(port_no)]
-        out = parser.OFPPacketOut(
-            datapath=datapath,
-            buffer_id=ofproto.OFP_NO_BUFFER,
-            in_port=ofproto.OFPP_CONTROLLER,
-            actions=actions,
-            data=data,
-        )
-        datapath.send_msg(out)
+    # Host In
 
     @set_ev_cls(event.EventHostAdd, MAIN_DISPATCHER)
-    def host_add_handler(self, ev):
+    def host_in_handler(self, ev):
         self.hosts[ev.host.mac] = {
             "datapath": ev.host.port.dpid,
             "port": ev.host.port.port_no,
         }
+
+    # Switch In
+
+    @set_ev_cls(event.EventSwitchEnter)
+    def switch_in_handler(self, event):
+        datapath = event.switch.dp
+
+        # Stop all previous threads
+        self.stop_all_threads()
+        hub.sleep(0.1)
+
+        # Create a new stop flag and spawn a new thread for the entering switch
+        self.switch_stop_flags[datapath.id] = False
+        self.logger.info(f"Switch {datapath.id} entered, starting a new thread.")
+        thread = hub.spawn(self.switch_thread, datapath.id)
+        self.switch_threads[datapath.id] = thread  # Save the new thread
+
+    # Packet In
+
+    @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
+    def packet_in_handler(self, event):
+        # Event Handling
+        msg = event.msg
+        datapath = msg.datapath
+
+        # Packet Description
+        pkt = packet.Packet(msg.data)
+
+        arp_pkt = pkt.get_protocol(arp.arp)
+        ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
+        ipv6_pkt = pkt.get_protocol(ipv6.ipv6)
+
+        eth = pkt.get_protocol(ethernet.ethernet)
+        src_mac = eth.src
+        dst_mac = eth.dst
+
+        # LLDP Packet
+        if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
+            if self.lldp_active:
+                self.handle_lldp_packet_in(datapath, msg, pkt)
+                return
+            else:
+                return
+        # ARP Packet
+        elif arp_pkt:
+            if self.lldp_active:
+                return
+            else:
+                src_ip = arp_pkt.src_ip
+                dst_ip = arp_pkt.dst_ip
+                arp_opcode = arp_pkt.opcode
+                if arp_opcode == arp.ARP_REPLY:
+
+                    print(
+                        "ARP Reply",
+                        f"Source MAC: {src_mac}",
+                        f"Destination MAC: {dst_mac}",
+                        f"Source IP: {src_ip}",
+                        f"Destination IP: {dst_ip}",
+                        f"Datapath : {datapath.id}",
+                    )
+                else:
+                    print(
+                        "ARP Request",
+                        f"Source MAC: {src_mac}",
+                        f"Destination MAC: {dst_mac}",
+                        f"Source IP: {src_ip}",
+                        f"Destination IP: {dst_ip}",
+                        f"Datapath : {datapath.id}",
+                    )
+                self.handle_arp_packet_in(datapath, msg)
+                return
+        # IPv4 Packet
+        elif ipv4_pkt:
+            if self.lldp_active:
+                return
+            else:
+                src_ip = ipv4_pkt.src
+                dst_ip = ipv4_pkt.dst
+                print(
+                    "IPv4",
+                    f"Source MAC: {src_mac}",
+                    f"Destination MAC: {dst_mac}",
+                    f"Source IP: {src_ip}",
+                    f"Destination IP: {dst_ip}")
+                # Generate an array of strings from 224 to 239
+                filter = [str(i) for i in range(224, 240)]
+                # Ignore IP addresses that start with 224 to 239
+                if dst_ip.startswith(tuple(filter)):
+                    print("Ignored")
+                    return
+                elif dst_ip == "255:255:255:255":
+                    print("Ignored")
+                    return
+                elif dst_mac == "ff:ff:ff:ff:ff:ff":
+                    print("Ignored")
+                    return
+                else :
+                    self.handle_common_packet_in(datapath, msg)
+                    return
+        # IPv6 Packet
+        elif ipv6_pkt:
+            if self.lldp_active:
+                return
+            else:
+                src_ip = ipv6_pkt.src
+                dst_ip = ipv6_pkt.dst
+
+                # Check if destination IP starts with ff (IPv6 multicast)
+                if ipv6_pkt.dst.startswith("ff0"):
+                    return
+
+                print(
+                    "IPv6",
+                    f"Source MAC: {src_mac}",
+                    f"Destination MAC: {dst_mac}",
+                    f"Source IP: {src_ip}",
+                    f"Destination IP: {dst_ip}",
+                )
+                return
+                self.handle_common_packet_in(datapath, msg)
+        # Other Packets
+        else:
+            print("Other Packet", eth.ethertype)
+        print("Packet Out")
