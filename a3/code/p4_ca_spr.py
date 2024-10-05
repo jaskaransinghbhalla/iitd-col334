@@ -55,11 +55,27 @@ class ShortestPathRouting(app_manager.RyuApp):
 
         # LLDP Constants
 
+        
         self.lldp_timer_thread = hub.spawn(self.lldp_timer)
         self.switch_threads = {}
         self.switch_stop_flags = {}
+        # self.periodic_lldp_thread = hub.spawn(self.periodic_lldp_timer)  
+        
 
     # LLDP Packet and Graph construction
+    # def periodic_lldp_timer(self):
+    #     while True:
+    #         hub.sleep(30)
+    #         self.lldp_active = True  # Flag to control LLDP handling
+    #         self.src_lldp_timestamps = {}
+    #         self.w_graph = {}
+    #         self.shortest_path = {}
+    #         self.shortest_path_pred = {}
+    #         self.shortest_path_trees = {}
+    #         self.blocked_ports_on_shortest_path_tree = {}
+    #         self.switch_threads = {}
+    #         self.switch_stop_flags = {}
+    #         self.lldp_timer_thread = hub.spawn(self.lldp_timer)
 
     def switch_thread(self, dpid):
         while not self.switch_stop_flags[dpid]:
@@ -197,7 +213,20 @@ class ShortestPathRouting(app_manager.RyuApp):
         # pp(self.blocked_ports_on_shortest_path_tree)
         self.lldp_active = False  # Stop handling LLDP packets
         print("LLDP Listening Stopped.")
+        hub.spawn(self.periodic_lldp_timer) 
 
+    def periodic_lldp_timer(self):
+        while True :
+            hub.sleep(20)
+            for switch in self.switches:
+                self.send_lldp_packets_on_all_ports(switch.dp)
+            print("Graph Updated")
+            self.cal_shortest_path(self.w_graph)
+            pp(self.w_graph)
+            pp(self.shortest_path)
+            for switch in self.switches:
+                self.delete_all_flows(switch.dp)
+    
     def create_graph(self):
         graph = {}
         for link in self.links:
@@ -372,12 +401,12 @@ class ShortestPathRouting(app_manager.RyuApp):
                 "src_port": msg.in_port,
             }
 
-            # (print)(
-            #     "LLDP Packet Received",
-            #     datapath.id,
-            #     src_chassis,
-            #     link_delay,
-            # )
+            (print)(
+                "LLDP Packet Received",
+                datapath.id,
+                src_chassis,
+                link_delay,
+            )
 
     def handle_arp_packet_in(self, datapath, msg):
         # print("------------------")
@@ -558,6 +587,7 @@ class ShortestPathRouting(app_manager.RyuApp):
             self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
         if(len(out_ports) == 1):
             self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
+    
     def send_packet(self, datapath, in_port, out_port, data, buffer_id):
         """
         Sends a packet to a specified port on a datapath.
@@ -666,11 +696,11 @@ class ShortestPathRouting(app_manager.RyuApp):
 
         # LLDP Packet
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
-            if self.lldp_active:
-                self.handle_lldp_packet_in(datapath, msg, pkt)
-                return
-            else:
-                return
+            self.handle_lldp_packet_in(datapath, msg, pkt)
+            # if self.lldp_active:
+            #     return
+            # else:
+            #     return
         # ARP Packet
         elif arp_pkt:
             if self.lldp_active:
@@ -750,3 +780,13 @@ class ShortestPathRouting(app_manager.RyuApp):
         # Other Packets
         else:
             print("Other Packet", eth.ethertype)
+
+    def delete_all_flows(self, datapath):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        # Create a flow mod message to delete all flows (OpenFlow 1.0)
+        match = parser.OFPMatch()  # Match all flows
+        mod = parser.OFPFlowMod(datapath=datapath, command=ofproto.OFPFC_DELETE,
+                                out_port=ofproto.OFPP_NONE, match=match)
+        datapath.send_msg(mod)
