@@ -7,7 +7,7 @@ from ryu.controller.handler import set_ev_cls
 from ryu.lib import hub
 from ryu.lib.mac import haddr_to_bin
 from ryu.lib.packet import ether_types
-from ryu.lib.packet import ethernet, lldp, arp
+from ryu.lib.packet import ethernet, lldp
 from ryu.lib.packet import lldp
 from ryu.lib.packet import packet
 from ryu.lib.packet import packet
@@ -16,7 +16,6 @@ from ryu.topology import event
 from ryu.topology.api import get_switch, get_all_link, get_all_host
 import heapq
 import struct
-import threading
 import time
 
 
@@ -52,6 +51,8 @@ class ShortestPathRouting(app_manager.RyuApp):
 
         self.blocked_ports = set()
         self.spanning_tree = []
+        
+        # LLDP Constants
 
         self.lldp_timer_thread = hub.spawn(self.lldp_timer)
 
@@ -165,6 +166,7 @@ class ShortestPathRouting(app_manager.RyuApp):
         print("--------------------------------")
         #  Links
         self.links = [link.to_dict() for link in get_all_link(self.topology_api_app)]
+        # Hosts
         # hosts = get_all_host(self.topology_api_app)
         # self.hosts = {
         #     host.mac: {"datapath": host.port.dpid, "port": host.port.port_no}
@@ -172,6 +174,7 @@ class ShortestPathRouting(app_manager.RyuApp):
         # }
         print("Hosts")
         # pp(hosts)
+        print(self.hosts.keys())
         pp(self.hosts)
         print("--------------------------------")
 
@@ -187,13 +190,13 @@ class ShortestPathRouting(app_manager.RyuApp):
         print("Link-delay Weighted Graph")
         pp(self.w_graph)
         print("--------------------------------")
-
-        # print("Spanning-Tree")
-        # pp(self.spanning_tree)
-        # print("--------------------------------")
-        # print("Blocked Ports")
-        # for dpid, port_no in self.blocked_ports:
-        # pp(f"DPID: {dpid}, Port: {port_no}")
+        self.create_spanning_tree()
+        print("Spanning-Tree")
+        pp(self.spanning_tree)
+        print("--------------------------------")
+        print("Blocked Ports")
+        for dpid, port_no in self.blocked_ports:
+            pp(f"DPID: {dpid}, Port: {port_no}")
 
         # print("--------------------------------")
         self.cal_shortest_path(self.w_graph)
@@ -309,10 +312,6 @@ class ShortestPathRouting(app_manager.RyuApp):
         eth = pkt.get_protocol(ethernet.ethernet)
         src_mac = eth.src
         dst_mac = eth.dst
-        # arp_pkt = pkt.get_protocol(arp.arp)
-
-        # if arp_pkt:
-        #     self.logger.info("Received ARP packet from %s", arp_pkt.src_mac)
 
         # LLDP Packet Handling
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:  # Link Layer Discovery Protocol
@@ -320,20 +319,6 @@ class ShortestPathRouting(app_manager.RyuApp):
                 self.handle_lldp_packet_in(datapath, msg, pkt)
                 return
 
-        # ARP Packet Handling
-        # elif arp_pkt:
-        #     if arp_pkt.opcode == arp.ARP_REQUEST:
-        #         # ARP Request Handling
-        #         print("ARP Request Received")
-        #         self.handle_arp_req(datapath, msg, arp_pkt)
-        #         return
-        #     elif arp_pkt.opcode == arp.ARP_REPLY:
-        #         # ARP Reply Handling
-        #         print("ARP Reply Received")
-        #         self.handle_arp_reply(datapath, msg, arp_pkt)
-        #         return
-        #
-        # Initializing and updating Host Mac Address - Switch Port table
         self.mac_to_port.setdefault(datapath.id, {})
         self.mac_to_port[datapath.id][src_mac] = msg.in_port
 
@@ -345,45 +330,53 @@ class ShortestPathRouting(app_manager.RyuApp):
         Section to be Editted
         """
 
+        # print packet info
+        # print(f"Packet in {datapath.id} {src_mac} {dst_mac}")
+        flood = False
         # Check if the destination MAC address is in the MAC to switch port mapping
         if dst_mac in mac_to_switch_port_mapping:
             # If the destination MAC address is found, get the corresponding output port
             out_port = mac_to_switch_port_mapping[dst_mac]
             out_ports.append(out_port)
+        elif dst_mac in list(self.hosts.keys()):
+            print("Shortest path handled")
+            # Get the switch corresponding to dst_mac
+            dst_datapath = self.hosts[dst_mac]['datapath']
+            # Get the output port for the data to be sent to
+            out_port = self.shortest_path[datapath.id][dst_datapath][1]
+            print(type(out_port))
+            # Update the out_ports
+            out_ports.append(out_port)
+            # Save the dst_mac to port configuration
+            self.mac_to_port[datapath.id][dst_mac] = out_port
         else:
-            if dst_mac == "ff:ff:ff:ff:ff:ff":
-                # Broadcast MAC address
-                # Send the packet out of all ports except the incoming port
-                for port in datapath.ports:
-                    if port != msg.in_port:
-                        out_ports.append(port)
-            else:
-                if dst_mac in self.hosts:
-                    # Get the switch corresponding to dst_mac
-                    dst_datapath = self.hosts[dst_mac]["datapath"]
-                    # Get the output port for the data to be sent to
-                    out_port = self.shortest_path[datapath.id][dst_datapath][1]
-                    # Update the out_ports
-                    out_ports.append(out_port)
-                    # Save the dst_mac to port configuration
-                    self.mac_to_port[datapath.id][dst_mac] = out_port
-                else:
-                    out_ports.append(ofp.OFPP_FLOOD)
+            # Spanning Tree
+            flood = True
+            # Broadcast MAC address
+            ports_all = set(datapath.ports.keys())
+            # Exclude the input port and the special OFPP_CONTROLLER port (65534)
+            ports_to_exclude = {msg.in_port, 65534}
+            # Exclude the blocked ports specific to this switch
+            for datapath_id_for_blocked_port, port_no in self.blocked_ports:
+                if datapath_id_for_blocked_port == datapath.id:
+                    ports_to_exclude.add(port_no)
+            # Calculate the output ports by subtracting the excluded ports from all ports
+            out_ports = list(ports_all - ports_to_exclude)
 
+        """
+        Section to be Editted
+        """
         # Data Parsing
         if msg.buffer_id == ofp.OFP_NO_BUFFER:
             data = msg.data
         else:
             data = None
 
-        """
-        Section to be Editted
-        """
-
         # Flow Management and Packet Sending
         for out_port in out_ports:
             # Flow Management
-            self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
+            if not flood :
+                self.add_flow(datapath, msg.in_port, out_port, src_mac, dst_mac)
             # Packet Sending
             self.send_packet(datapath, msg.in_port, out_port, data, msg.buffer_id)
 
@@ -507,78 +500,6 @@ class ShortestPathRouting(app_manager.RyuApp):
             data=data,
         )
         datapath.send_msg(out)
-
-    # def handle_arp_req(self, datapath, msg, arp_pkt):
-    #     # Extract ARP request information
-    #     src_mac = arp_pkt.src_mac
-    #     src_ip = arp_pkt.src_ip
-    #     dst_ip = arp_pkt.dst_ip
-
-    #     # Check if the destination IP is in the hosts table
-    #     if dst_ip in self.hosts:
-    #         # Get the destination MAC address from the hosts table
-    #         dst_mac = self.hosts[dst_ip]["mac"]
-
-    #         # Create ARP reply packet
-    #         arp_reply = arp.arp(
-    #             opcode=arp.ARP_REPLY,
-    #             src_mac=dst_mac,
-    #             src_ip=dst_ip,
-    #             dst_mac=src_mac,
-    #             dst_ip=src_ip,
-    #         )
-
-    #         # Create Ethernet frame
-    #         eth_reply = ethernet.ethernet(
-    #             dst=src_mac,
-    #             src=dst_mac,
-    #             ethertype=ether_types.ETH_TYPE_ARP,
-    #         )
-
-    #         # Create packet with ARP reply
-    #         pkt_reply = packet.Packet()
-    #         pkt_reply.add_protocol(eth_reply)
-    #         pkt_reply.add_protocol(arp_reply)
-    #         pkt_reply.serialize()
-
-    #         # Send the ARP reply packet
-    #         self.send_packet(datapath, msg.in_port, pkt_reply.data, None)
-
-    # def handle_arp_reply(self, datapath, msg, arp_pkt):
-    #     # Extract ARP reply information
-    #     src_mac = arp_pkt.src_mac
-    #     src_ip = arp_pkt.src_ip
-    #     dst_ip = arp_pkt.dst_ip
-
-    #     # Check if the destination IP is in the hosts table
-    #     if dst_ip in self.hosts:
-    #         # Get the destination MAC address from the hosts table
-    #         dst_mac = self.hosts[dst_ip]["mac"]
-
-    #         # Create ARP request packet
-    #         arp_request = arp.arp(
-    #             opcode=arp.ARP_REQUEST,
-    #             src_mac=src_mac,
-    #             src_ip=src_ip,
-    #             dst_mac=dst_mac,
-    #             dst_ip=dst_ip,
-    #         )
-
-    #         # Create Ethernet frame
-    #         eth_request = ethernet.ethernet(
-    #             dst=dst_mac,
-    #             src=src_mac,
-    #             ethertype=ether_types.ETH_TYPE_ARP,
-    #         )
-
-    #         # Create packet with ARP request
-    #         pkt_request = packet.Packet()
-    #         pkt_request.add_protocol(eth_request)
-    #         pkt_request.add_protocol(arp_request)
-    #         pkt_request.serialize()
-
-    #         # Send the ARP request packet
-    #         self.send_packet(datapath, msg.in_port, pkt_request.data, None)
 
     @set_ev_cls(event.EventHostAdd, MAIN_DISPATCHER)
     def host_add_handler(self, ev):
