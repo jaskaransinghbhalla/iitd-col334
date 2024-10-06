@@ -63,19 +63,6 @@ class ShortestPathRouting(app_manager.RyuApp):
         
 
     # LLDP Packet and Graph construction
-    # def periodic_lldp_timer(self):
-    #     while True:
-    #         hub.sleep(30)
-    #         self.lldp_active = True  # Flag to control LLDP handling
-    #         self.src_lldp_timestamps = {}
-    #         self.w_graph = {}
-    #         self.shortest_path = {}
-    #         self.shortest_path_pred = {}
-    #         self.shortest_path_trees = {}
-    #         self.blocked_ports_on_shortest_path_tree = {}
-    #         self.switch_threads = {}
-    #         self.switch_stop_flags = {}
-    #         self.lldp_timer_thread = hub.spawn(self.lldp_timer)
 
     def switch_thread(self, dpid):
         while not self.switch_stop_flags[dpid]:
