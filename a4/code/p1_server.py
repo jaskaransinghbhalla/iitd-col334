@@ -9,7 +9,7 @@ MSS = 1400  # Maximum Segment Size for each packet
 WINDOW_SIZE = 5  # Number of packets in flight
 DUP_ACK_THRESHOLD = 3  # Threshold for duplicate ACKs to trigger fast recovery
 # FILE_PATH = "100MB.bin"
-FILE_PATH = "10KB.bin"
+FILE_PATH = "./test/test_10KB.bin"
 # Initialize timeout to some value but update it as ACK packets arrive
 INITIAL_TIMEOUT = 1.0
 
