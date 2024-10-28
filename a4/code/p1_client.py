@@ -1,6 +1,7 @@
 import socket
 import argparse
 import time
+import json
 
 # Constants
 MSS = 1400  # Maximum Segment Size
@@ -46,8 +47,13 @@ def receive_file(server_ip, server_port, pref_outfile):
             try:
                 if has_request_sent:
                     packet, _ = client_socket.recvfrom(BUFFER_SIZE)
-                seq_num = int.from_bytes(packet[:4], 'big')
-                data = packet[4:]
+
+                # deserialise the binary string into a json
+                packet = json.loads(packet)
+                print("DEBUG, packet: ", packet)
+
+                seq_num = packet["seq"]
+                data = packet["data"]
 
                 if data == b'EOF':
                     print("File tranmission completed")
