@@ -96,13 +96,18 @@ def run(expname):
                     h2 = net.get("h2")
 
                     start_time = time.time()
-                    with open("output_server.log", "w") as server_log:
+                    log_folder = "logs"
+                    os.makedirs(log_folder, exist_ok=True)
+                    server_log_file = os.path.join(log_folder, f"server_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log")
+                    client_log_file = os.path.join(log_folder, f"client_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log")
+
+                    with open(server_log_file, "w") as server_log:
                         h1.cmd(
-                            f"python3 -u p1_server.py {SERVER_IP} {SERVER_PORT} {FAST_RECOVERY} > output_server.log 2>&1 &"
+                            f"python3 -u p1_server.py {SERVER_IP} {SERVER_PORT} {FAST_RECOVERY} > {server_log_file} 2>&1 &"
                         )
-                    with open("output_client.log", "w") as client_log:
+                    with open(client_log_file, "w") as client_log:
                         h2.cmd(
-                            f"python3 -u p1_client.py {SERVER_IP} {SERVER_PORT} --pref_outfile {PREFIX_OUT} > output_client.log 2>&1"
+                            f"python3 -u p1_client.py {SERVER_IP} {SERVER_PORT} --pref_outfile {PREFIX_OUT} > {client_log_file} 2>&1"
                         )
                     end_time = time.time()
                     ttc = end_time - start_time
