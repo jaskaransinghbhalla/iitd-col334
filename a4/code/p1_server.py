@@ -37,7 +37,7 @@ def send_file(server_ip, server_port, enable_fast_recovery):
             print(f"Client requested a file...")
 
             # Open file and initialize sliding window pointers
-            with open(FILE_PATH, "r") as f:
+            with open(FILE_PATH, "rb") as f:
                 LAF = 0 # last acknowledged frame
                 LFS = 0
                 file_sent = False
