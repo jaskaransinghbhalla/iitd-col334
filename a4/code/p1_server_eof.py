@@ -27,9 +27,6 @@ def make_packet(seq, data):
 
 
 def send_file(server_ip, server_port, enable_fast_recovery):
-    """
-    Send a predefined file to the client, ensuring reliability over UDP.
-    """
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind((server_ip, server_port))
 
@@ -39,22 +36,16 @@ def send_file(server_ip, server_port, enable_fast_recovery):
     dev_rtt = 0.0
     timeout_interval = estimated_rtt + 4 * dev_rtt
 
-    # Wait for client to initiate connection
     client_address = None
 
     while True:
-        # Receive file request from client
         request, client_address = server_socket.recvfrom(BUFFER_SIZE)
-        print("Client Connected :", client_address)
-        decoded_request = request.decode()
-        # print("Request : ", request.decode())
-        print("Request", decoded_request)
-        if decoded_request == "GET":
-            print(f"Client requested a file...")
-
-            # Open file and initialize sliding window pointers
+        print("Client Connected:", client_address)
+        
+        if request.decode() == "GET":
+            print("Client requested a file...")
             with open(FILE_PATH, "rb") as f:
-                LAF = 0  # last acknowledged frame
+                LAF = 0
                 LFS = 0
                 file_sent = False
                 packets = []
@@ -66,7 +57,7 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                         data = f.read(MSS)
                         if not data:
                             file_sent = True
-                            packets.append((LFS, b"EOF"))
+                            # packets.append((LFS, b"EOF"))
                         else:
                             packets.append((LFS, data))
                         packet_timestamps[LFS] = time.time()
@@ -74,31 +65,21 @@ def send_file(server_ip, server_port, enable_fast_recovery):
 
                     for seq, packet_data in packets:
                         if time.time() - packet_timestamps[seq] >= timeout_interval:
-                            packet = seq.to_bytes(4, "big") + packet_data
-
-                            # packet_json = {"seq": seq, "data": packet_data}
-
-                            # # serialise packet_json into a binary string
-                            # packet = json.dumps(packet_json).encode()
                             packet = make_packet(seq, packet_data)
                             server_socket.sendto(packet, client_address)
                             packet_timestamps[seq] = time.time()
                             print(f"Packet {seq} retransmitted due to timeout.")
                         else:
-                            # packet_json = {"seq": seq, "data": packet_data}
-                            # # serialise packet_json into a binary string
-                            # packet = json.dumps(packet_json).encode()
-                            # packet = seq.to_bytes(4, 'big') + packet_data
-                            packet = make_packet(seq, packet_data)
-                            server_socket.sendto(packet, client_address)
-
+                          packet = make_packet(seq, packet_data)
+                          server_socket.sendto(packet, client_address)
+                    
                     try:
-                        # Wait for acknowledgment
+                        # Wait for acknowledgement from client  
                         ack, _ = server_socket.recvfrom(BUFFER_SIZE)
                         ack_num = int.from_bytes(ack, "big")
                         print(f"Cumulative ACK received: {ack_num}")
 
-                        # Calculate SampleRTT
+                        # Timeout and RTT calculations here ...
                         if ack_num in packet_timestamps:
                             sample_rtt = time.time() - packet_timestamps[ack_num]
 
@@ -110,58 +91,70 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                                 sample_rtt - estimated_rtt
                             )
                             timeout_interval = estimated_rtt + 4 * dev_rtt
-                            # print(f"Timeout interval updated to {timeout_interval}")
-
-                        # Fast retransmit mode: Check for duplicate ACKs
+                        
                         if enable_fast_recovery:
                             if ack_num in duplicate_acks:
                                 duplicate_acks[ack_num] += 1
                             else:
                                 duplicate_acks[ack_num] = 1
 
-                            # Retransmit if 3 duplicate ACKs are received
-                            if duplicate_acks[ack_num] == 3 and ack_num < LFS:
-                                print(f"Fast recovery: Retransmitting packet {ack_num}")
+                            if duplicate_acks[ack_num] == DUP_ACK_THRESHOLD and ack < LFS:
+                                print(f"Fast recovery triggered: Retransmitting packet {ack_num}")
+                                
                                 # Find the packet and retransmit
                                 for seq, packet_data in packets:
                                     if seq == ack_num:
-                                        # packet = seq.to_bytes(4, 'big') + packet_data
-                                        packet_json = {"seq": seq, "data": packet_data}
-
-                                        # serialise packet_json into a binary string
-                                        # packet = json.dumps(packet_json).encode()
                                         packet = make_packet(seq, packet_data)
                                         server_socket.sendto(packet, client_address)
-
                                         packet_timestamps[seq] = time.time()
+                                        print(f"Packet {seq} retransmitted due to fast recovery.")
                                         break
+                        
+                        # TODO:
+                        # UNDERSTAND THESE TWO LINES
+                        if file_sent and ack_num >= LFS - 1:
+                            break
 
-                        # Slide the window up to the latest cumulative ACK
+                        # Slide the window up to the latest cumulative ACKs
                         if ack_num > LAF:
                             LAF = ack_num
-                            # Remove acknowledged packets from the window and timestamps
-                            packets = [
-                                (seq, data) for seq, data in packets if seq > LAF
-                            ]
-                            packet_timestamps = {
-                                seq: ts
-                                for seq, ts in packet_timestamps.items()
-                                if seq > LAF
-                            }
+                            packets = [(seq, packet_data) for seq, packet_data in packets if seq > LAF]
+                            packet_timestamps = {seq: timestamp for seq, timestamp in packet_timestamps.items() if seq > LAF}
+                            duplicate_acks = {seq: count for seq, count in duplicate_acks.items() if seq > LAF}
 
-                            duplicate_acks = {
-                                seq: count
-                                for seq, count in duplicate_acks.items()
-                                if seq > LAF
-                            }
                     except socket.timeout:
                         print("Timeout occurred while waiting for ACK.")
                         continue
 
-                    if file_sent and LAF == LFS:
-                        print("File sent successfully.")
-                        break
+                # EOF Transmission Policy
+                eof_sent = False
+                eof_retransmissions = 0
+                while not eof_sent and eof_retransmissions < 10:
+                    eof_packet = make_packet(LFS, b"EOF")
+                    server_socket.sendto(eof_packet, client_address)
+                    packet_timestamps[LFS] = time.time()
+                    print(f"EOF packet transmitted, attempt {eof_retransmissions + 1}")
+                    
+                    try:
+                        ack, _ = server_socket.recvfrom(BUFFER_SIZE)
+                        ack_num = int.from_bytes(ack, "big")
 
+                        if ack_num == LFS:
+                            print("EOF ACK received.")
+                            eof_sent = True
+                        else:
+                            raise socket.timeout
+                        
+                    except socket.timeout:
+                        eof_retransmissions += 1
+                        print("Timeout on EOF ACK, retransmitting EOF.")
+
+                if not eof_sent:
+                    print("EOF ACK not received after 10 attempts. Closing connection.")
+                    break
+
+            print("File transfer complete. Closing connection.")
+            break
 
 # Parse command-line arguments
 parser = argparse.ArgumentParser(description="Reliable file transfer server over UDP.")
