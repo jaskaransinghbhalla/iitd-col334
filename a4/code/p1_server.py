@@ -7,6 +7,7 @@ MSS = 1400  # Maximum Segment Size for each packet
 # Check Window Size later on
 WINDOW_SIZE = 5  # Number of packets in flight
 DUP_ACK_THRESHOLD = 3  # Threshold for duplicate ACKs to trigger fast recovery
+# FILE_PATH = "100MB.bin"
 FILE_PATH = "10KB.bin"
 INITIAL_TIMEOUT = 1.0  # Initialize timeout to some value but update it as ACK packets arrive
 
@@ -86,7 +87,7 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                             estimated_rtt = (1 - ALPHA) * estimated_rtt + ALPHA * sample_rtt
                             dev_rtt = (1 - BETA) * dev_rtt + BETA * abs(sample_rtt - estimated_rtt)
                             timeout_interval = estimated_rtt + 4 * dev_rtt
-                            print(f"Timeout interval updated to {timeout_interval}") 
+                            # print(f"Timeout interval updated to {timeout_interval}") 
 
                         # Fast retransmit mode: Check for duplicate ACKs
                         if enable_fast_recovery:
