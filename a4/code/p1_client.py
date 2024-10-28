@@ -1,7 +1,7 @@
 import socket
 import argparse
 import time
-import json
+import struct 
 
 # Constants
 MSS = 1400  # Maximum Segment Size
@@ -12,6 +12,12 @@ parser.add_argument("server_ip", help="IP address of the server")
 parser.add_argument("server_port", type=int, help="Port number of the server")
 parser.add_argument("--pref_outfile", default="", help="Prefix for the output file")
 
+def parse_packet(packet):
+    seq_length = struct.unpack('I', packet[:4])[0]
+    seq_bytes = packet[4:4+seq_length]
+    seq = int.from_bytes(seq_bytes, 'big')
+    data = packet[4+seq_length:]
+    return seq, data
 
 def receive_file(server_ip, server_port, pref_outfile):
     """
@@ -49,11 +55,9 @@ def receive_file(server_ip, server_port, pref_outfile):
                     packet, _ = client_socket.recvfrom(BUFFER_SIZE)
 
                 # deserialise the binary string into a json
-                packet = json.loads(packet)
-                print("DEBUG, packet: ", packet)
-
-                seq_num = packet["seq"]
-                data = packet["data"]
+                # packet = json.loads(packet)
+                seq_num, data = parse_packet(packet)
+                print("DEBUG: ", seq_num, data)
 
                 if data == b'EOF':
                     print("File tranmission completed")

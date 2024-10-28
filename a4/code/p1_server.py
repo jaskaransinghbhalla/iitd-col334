@@ -1,7 +1,7 @@
 import socket
 import time
 import argparse
-import json
+import struct
 
 # Constants
 MSS = 1400  # Maximum Segment Size for each packet
@@ -19,6 +19,12 @@ BETA = 0.25
 
 BUFFER_SIZE = 1000  # 64
 
+def make_packet(seq, data):
+    seq_bytes = seq.to_bytes((seq.bit_length() + 7) // 8, byteorder='big')
+    seq_length = len(seq_bytes)
+
+    serialised_data = struct.pack('I', seq_length) + seq_bytes + data
+    return serialised_data
 
 def send_file(server_ip, server_port, enable_fast_recovery):
     """
@@ -70,18 +76,20 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                         if time.time() - packet_timestamps[seq] >= timeout_interval:
                             packet = seq.to_bytes(4, "big") + packet_data
 
-                            packet_json = {"seq": seq, "data": packet_data}
+                            # packet_json = {"seq": seq, "data": packet_data}
 
-                            # serialise packet_json into a binary string
-                            packet = json.dumps(packet_json).encode()
+                            # # serialise packet_json into a binary string
+                            # packet = json.dumps(packet_json).encode()
+                            packet = make_packet(seq, packet_data)
                             server_socket.sendto(packet, client_address)
                             packet_timestamps[seq] = time.time()
                             print(f"Packet {seq} retransmitted due to timeout.")
                         else:
-                            packet_json = {"seq": seq, "data": packet_data}
-                            # serialise packet_json into a binary string
-                            packet = json.dumps(packet_json).encode()
+                            # packet_json = {"seq": seq, "data": packet_data}
+                            # # serialise packet_json into a binary string
+                            # packet = json.dumps(packet_json).encode()
                             # packet = seq.to_bytes(4, 'big') + packet_data
+                            packet = make_packet(seq, packet_data)
                             server_socket.sendto(packet, client_address)
 
                     try:
@@ -121,8 +129,10 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                                         packet_json = {"seq": seq, "data": packet_data}
 
                                         # serialise packet_json into a binary string
-                                        packet = json.dumps(packet_json).encode()
+                                        # packet = json.dumps(packet_json).encode()
+                                        packet = make_packet(seq, packet_data)
                                         server_socket.sendto(packet, client_address)
+                                        
                                         packet_timestamps[seq] = time.time()
                                         break
 
