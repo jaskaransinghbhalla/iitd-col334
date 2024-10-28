@@ -66,6 +66,9 @@ def run(expname):
     elif expname == "delay":
         delay_list = [x for x in range(0, 201, 20)]
         loss_list = [1]
+    elif expname == "custom":
+        delay_list = [20]
+        loss_list = [50]
     print(loss_list, delay_list)
 
     # Loop to create the topology 10 times with varying loss (1% to 10%)
@@ -98,8 +101,14 @@ def run(expname):
                     start_time = time.time()
                     log_folder = "logs"
                     os.makedirs(log_folder, exist_ok=True)
-                    server_log_file = os.path.join(log_folder, f"server_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log")
-                    client_log_file = os.path.join(log_folder, f"client_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log")
+                    server_log_file = os.path.join(
+                        log_folder,
+                        f"server_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log",
+                    )
+                    client_log_file = os.path.join(
+                        log_folder,
+                        f"client_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log",
+                    )
 
                     with open(server_log_file, "w") as server_log:
                         h1.cmd(

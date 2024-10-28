@@ -7,7 +7,7 @@ MSS = 1400  # Maximum Segment Size for each packet
 # Check Window Size later on
 WINDOW_SIZE = 5  # Number of packets in flight
 DUP_ACK_THRESHOLD = 3  # Threshold for duplicate ACKs to trigger fast recovery
-FILE_PATH = "test.txt"
+FILE_PATH = "10KB.bin"
 TIMEOUT = 1.0  # Initialize timeout to some value but update it as ACK packets arrive
 
 BUFFER_SIZE = 1000  # 64
@@ -113,7 +113,7 @@ def send_file(server_ip, server_port, enable_fast_recovery):
 parser = argparse.ArgumentParser(description="Reliable file transfer server over UDP.")
 parser.add_argument("server_ip", help="IP address of the server")
 parser.add_argument("server_port", type=int, help="Port number of the server")
-parser.add_argument("fast_recovery", type=int, help="Enable fast recovery")
+parser.add_argument("fast_recovery", type=bool, help="Enable fast recovery")
 
 args = parser.parse_args()
 
