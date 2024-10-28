@@ -7,7 +7,7 @@ MSS = 1400  # Maximum Segment Size for each packet
 # Check Window Size later on
 WINDOW_SIZE = 5  # Number of packets in flight
 DUP_ACK_THRESHOLD = 3  # Threshold for duplicate ACKs to trigger fast recovery
-FILE_PATH = ""
+FILE_PATH = "test.txt"
 TIMEOUT = 1.0  # Initialize timeout to some value but update it as ACK packets arrive
 
 BUFFER_SIZE = 1000  # 64
@@ -30,7 +30,17 @@ def send_file(server_ip, server_port, enable_fast_recovery):
         # Receive file request from client
         request, client_address = server_socket.recvfrom(BUFFER_SIZE)
         print("Client Connected :", client_address)
-        print("Request : ", request.decode())
+        decoded_request = request.decode()
+        # print("Request : ", request.decode())
+        print("Request", decoded_request)
+        if decoded_request == "GET":
+            print(f"Client requested a file...")
+
+            # Open file and initialize sliding window pointers
+            with open(FILE_PATH, "r") as f:
+                LAF = 0 # last acknowledged frame
+                LFS = 0 
+
 
 
 # Parse command-line arguments

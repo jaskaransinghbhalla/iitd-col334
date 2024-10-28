@@ -1,5 +1,6 @@
 import socket
 import argparse
+import time
 
 # Constants
 MSS = 1400  # Maximum Segment Size
@@ -22,12 +23,14 @@ def receive_file(server_ip, server_port, pref_outfile):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client_socket.settimeout(2)  # Set timeout for server response
     while True:
-        try : 
+        try:
+            print("Sending GET request to server...")
             client_socket.sendto("GET".encode(), (server_ip, server_port))
             packet, _ = client_socket.recvfrom(BUFFER_SIZE)
-        except client_socket.timeout :
-            continue
 
+            
+        except socket.timeout:
+            continue
 
     # Processing packets from server
     # server_address = (server_ip, server_port)
