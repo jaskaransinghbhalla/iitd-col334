@@ -29,16 +29,23 @@ def receive_file(server_ip, server_port, pref_outfile):
     expected_ack_num = 0
     buffer = {}
 
+    has_request_sent = False
+
     with open(output_filename, "wb") as f:
         while True:
             try:
-                print("Sending GET request to server...")
-                client_socket.sendto("GET".encode(), (server_ip, server_port))
-                packet, _ = client_socket.recvfrom(BUFFER_SIZE)
+                if not has_request_sent:
+                    print("Sending GET request to server...")
+                    client_socket.sendto("GET".encode(), (server_ip, server_port))
+                    packet, _ = client_socket.recvfrom(BUFFER_SIZE)
             except socket.timeout:
                 continue
 
+            has_request_sent = True
+
             try:
+                if has_request_sent:
+                    packet, _ = client_socket.recvfrom(BUFFER_SIZE)
                 seq_num = int.from_bytes(packet[:4], 'big')
                 data = packet[4:]
 
