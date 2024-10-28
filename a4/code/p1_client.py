@@ -57,7 +57,6 @@ def receive_file(server_ip, server_port, pref_outfile):
                 # deserialise the binary string into a json
                 # packet = json.loads(packet)
                 seq_num, data = parse_packet(packet)
-                print("DEBUG: ", seq_num, data)
 
                 if data == b'EOF':
                     print("File tranmission completed")
