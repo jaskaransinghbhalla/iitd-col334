@@ -8,7 +8,10 @@ MSS = 1400  # Maximum Segment Size for each packet
 WINDOW_SIZE = 5  # Number of packets in flight
 DUP_ACK_THRESHOLD = 3  # Threshold for duplicate ACKs to trigger fast recovery
 FILE_PATH = "10KB.bin"
-TIMEOUT = 1.0  # Initialize timeout to some value but update it as ACK packets arrive
+INITIAL_TIMEOUT = 1.0  # Initialize timeout to some value but update it as ACK packets arrive
+
+ALPHA = 0.125
+BETA = 0.25
 
 BUFFER_SIZE = 1000  # 64
 
@@ -22,9 +25,12 @@ def send_file(server_ip, server_port, enable_fast_recovery):
 
     print(f"Server listening on {server_ip}:{server_port}")
 
+    estimated_rtt = INITIAL_TIMEOUT
+    dev_rtt = 0.0
+    timeout_interval = estimated_rtt + 4 * dev_rtt
+
     # Wait for client to initiate connection
     client_address = None
-    file_path = FILE_PATH  # Predefined file name
 
     while True:
         # Receive file request from client
@@ -57,7 +63,7 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                         LFS += 1
                     
                     for seq, packet_data in packets:
-                        if time.time() - packet_timestamps[seq] >= TIMEOUT:
+                        if time.time() - packet_timestamps[seq] >= timeout_interval:
                             packet = seq.to_bytes(4, 'big') + packet_data
                             server_socket.sendto(packet, client_address)
                             packet_timestamps[seq] = time.time()
@@ -73,7 +79,14 @@ def send_file(server_ip, server_port, enable_fast_recovery):
                         print(f"Cumulative ACK received: {ack_num}")                      
 
                         # Calculate SampleRTT
-                        # TODO:
+                        if ack_num in packet_timestamps:
+                            sample_rtt = time.time() - packet_timestamps[ack_num]
+
+                            # Update EstimatedRTT and DevRTT
+                            estimated_rtt = (1 - ALPHA) * estimated_rtt + ALPHA * sample_rtt
+                            dev_rtt = (1 - BETA) * dev_rtt + BETA * abs(sample_rtt - estimated_rtt)
+                            timeout_interval = estimated_rtt + 4 * dev_rtt
+                            print(f"Timeout interval updated to {timeout_interval}") 
 
                         # Fast retransmit mode: Check for duplicate ACKs
                         if enable_fast_recovery:
