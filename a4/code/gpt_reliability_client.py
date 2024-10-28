@@ -1,5 +1,4 @@
 import socket
-import os
 
 # Client configuration
 SERVER_IP = '127.0.0.1'
