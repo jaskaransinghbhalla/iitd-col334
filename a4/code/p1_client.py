@@ -25,7 +25,7 @@ class Client:
 
         # Output File
         self.output_filename = f"{pref_outfile}_{download_file_name}"
-        self.eof_recieved = False
+        self.eof_received = False
         self.receive_file()
 
     def receive_file(self):
@@ -66,22 +66,22 @@ class Client:
                         packet,
                         download_file,
                     )
-                    if self.eof_recieved:
-                        print("breaked")
+                    if self.eof_received:
                         break
                 except socket.timeout:
-                    self.send_ack_to_server()
+                    self.send_ack_to_server(self.expected_ack_num)
         self.client_socket.close()
 
     def process_packet(self, packet, download_file):
 
-        seq_to_be_acked = 0
         seq_num, data = self.parse_packet(packet)
 
         # EOF
         if data == b"EOF":
             self.expected_ack_num += 1
             self.handle_eof_recv()
+            # send ACK for this EOF to the server
+
             return
         # Expected/Desired Packet
         elif seq_num == self.expected_ack_num:
@@ -102,16 +102,16 @@ class Client:
             print(f"Duplicate Packet - Seq: {seq_num}")
 
         # Send Ack to Server
-        self.send_ack_to_server()
+        self.send_ack_to_server(self.expected_ack_num)
         print(
-            f"Recieves seq {seq_num}\t, ACK for seq {seq_to_be_acked}, Expecting seq {self.expected_ack_num}"
+            f"Recieves seq {seq_num}\t, ACK for seq {self.expected_ack_num}, Expecting seq {self.expected_ack_num}"
         )
         return
 
-    def send_ack_to_server(self):
-        seq_to_be_acked = self.expected_ack_num - 1
+    def send_ack_to_server(self, seq_to_be_acked):
         segment = seq_to_be_acked.to_bytes(4, "big")
         self.client_socket.sendto(segment, (self.server_ip, self.server_port))
+        print(f"Send : {seq_to_be_acked} ")
 
     def parse_packet(self, packet):
         seq_length = struct.unpack("I", packet[:4])[0]
@@ -121,7 +121,10 @@ class Client:
         return seq, data
 
     def handle_eof_recv(self):
-        self.eof_recieved = True
+        self.eof_received = True
+        # send ACK for this EOF to the server
+        self.send_ack_to_server(self.expected_ack_num)
+        
         print("File downloaded successfully")
 
     def close_client(self):

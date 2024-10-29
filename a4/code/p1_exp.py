@@ -58,7 +58,6 @@ def run(expname):
     PREFIX_OUT = ".xyz"
 
     NUM_ITERATIONS = 5
-    OUTFILE = "received_file.txt"
     delay_list, loss_list = [], []
     if expname == "loss":
         loss_list = [x * 0.5 for x in range(0, 11)]
@@ -68,13 +67,15 @@ def run(expname):
         loss_list = [1]
     elif expname == "custom":
         delay_list = [20]
-        loss_list = [1]
+        loss_list = [50]
     print(loss_list, delay_list)
 
     # Loop to create the topology 10 times with varying loss (1% to 10%)
     for LOSS in loss_list:
         for DELAY in delay_list:
-            for FAST_RECOVERY in [True, False]:
+            for FAST_RECOVERY in [
+                False, 
+            ]:
                 for i in range(0, NUM_ITERATIONS):
                     print(
                         f"\n--- Running topology with {LOSS}% packet loss, {DELAY}ms delay and fast recovery {FAST_RECOVERY}"
