@@ -70,6 +70,7 @@ class Client:
                         break
                 except socket.timeout:
                     self.send_ack_to_server()
+        self.client_socket.close()
 
     def process_packet(self, packet, download_file):
 
@@ -80,6 +81,7 @@ class Client:
         if data == b"EOF":
             seq_to_be_acked = seq_num
             self.handle_eof_recv()
+            return
         # Expected/Desired Packet
         elif seq_num == self.expected_ack_num:
             download_file.write(data)
@@ -98,19 +100,17 @@ class Client:
                 self.buffer[seq_num] = data
         else:
             print(f"Duplicate Packet - Seq: {seq_num}")
-        return
 
         # Send Ack to Server
-        self.send_ack_to_server(client_socket, seq_to_be_acked, server_ip, server_port)
+        self.send_ack_to_server(seq_to_be_acked)
         print(
-            f"Recieves seq {seq_num}\t, ACK for seq {seq_to_be_acked}, Expecting seq {expected_ack_num}"
+            f"Recieves seq {seq_num}\t, ACK for seq {seq_to_be_acked}, Expecting seq {self.expected_ack_num}"
         )
-        return expected_ack_num, buffer
+        return
 
-    def send_ack_to_server(self):
-        self.client_socket.sendto(
-            self.expected_ack_num.to_bytes(4, "big"), (self.server_ip, self.server_port)
-        )
+    def send_ack_to_server(self, seq_to_be_acked):
+        segment = seq_to_be_acked.to_bytes(4, "big")
+        self.client_socket.sendto(segment, (self.server_ip, self.server_port))
 
     def parse_packet(self, packet):
         seq_length = struct.unpack("I", packet[:4])[0]
@@ -121,7 +121,6 @@ class Client:
 
     def handle_eof_recv(self):
         self.eof_recieved = True
-        self.client_socket.close()
         print("File downloaded successfully")
 
     def close_client(self):

@@ -46,9 +46,7 @@ class Server:
         try:
             # Receive file request from client
             request, client_address = self.server_socket.recvfrom(self.BUFFER_SIZE)
-
             print(f"Client connected on \t{client_address[0]}:{client_address[1]}")
-
             decoded_request = request.decode()
             if decoded_request == "GET":
                 self.client_address = client_address
@@ -57,67 +55,6 @@ class Server:
         except Exception as e:
             print(f"Error: {e}")
             return
-
-    def send_file(self):
-        """
-        Send a predefined file to the client, ensuring reliability over UDP.
-        """
-        print("Sending file to client")
-        # Initialize Client Variables
-        self.LAF = -1
-        self.LFS = -1
-        # Session Variables
-        self.duplicate_acks = {}
-        self.file_sent = False
-        # Assume the sequence number starts from 1
-        with open(SERVER_FILE_PATH, "rb") as f:
-            while True:
-                print(f"LAF: {self.LAF}, LFS: {self.LFS}")
-
-                # 1 - Determine the packets to be sent
-                packets_to_send = self.read_data_from_file(f)
-                print(f"Packets to send: {packets_to_send}")
-                # 2 - Send the Packets
-                self.send_packets_to_client(packets_to_send)
-                # 3 - Wait for the Acknowledgement
-                # 4 - Update the window
-                self.LFS = packets_to_send[-1][0]
-                self.LAF = packets_to_send[-1][0]
-                # 5 - Check if the file is sent
-                if self.file_sent and self.LAF == self.LFS:
-                    print("File sent successfully.")
-                    break
-
-    def send_packets_to_client(self, packets):
-        for seq, packet_data in packets:
-            # Retransmission due to timeout
-            # Normal Sending
-            packet = self.make_packet(seq, packet_data)
-            self.server_socket.sendto(packet, self.client_address)
-            print(f"Sent seq {seq} ")
-
-    def read_data_from_file(self, file):
-        # create a packets object of size WINDOW_SIZE
-        packets = []
-        # Read the file from the current LFS * MSS position
-        file_read_offset = self.get_file_read_offset()
-        file.seek(file_read_offset)
-        for i in range(self.WINDOW_SIZE):
-            seq_no = self.LFS + i + 1
-            data = file.read(self.MSS)
-            if not data:
-                self.file_sent = True
-                packets.append((seq_no, b"EOF"))
-                break
-            else:
-                packets.append((seq_no, data))
-                self.packet_timestamps[seq_no] = time.time()
-        return packets
-
-    def get_file_read_offset(self):
-        if self.LFS == -1:
-            return 0
-        return self.LFS * self.MSS + 1
 
     def update_time_interval(self, ack_num):
         sample_rtt = time.time() - self.packet_timestamps[ack_num]
@@ -134,6 +71,91 @@ class Server:
         seq_length = len(seq_bytes)
         serialised_data = struct.pack("I", seq_length) + seq_bytes + data
         return serialised_data
+
+    def get_file_read_offset(self):
+        if self.LFS == -1:
+            return 0
+        return self.LFS * self.MSS + 1
+
+    def read_data_from_file(self, file):
+        # create a packets object of size WINDOW_SIZE
+        self.all_packets_read = False
+        packets = []
+        # Read the file from the current LFS * MSS position
+        file_read_offset = self.get_file_read_offset()
+        file.seek(file_read_offset)
+
+        packet_range_min = 0
+        packet_range_max = self.WINDOW_SIZE
+        if self.LAF != -1:
+            packet_range_min = self.LAF
+            packet_range_max = self.LAF + self.WINDOW_SIZE
+        
+        # Sender
+        i = packet_range_min
+        while i < packet_range_max:
+            seq_no = self.LFS + i + 1
+            data = file.read(self.MSS)
+            if not data:
+                self.all_packets_read = True
+                break
+            else:
+                packets.append((seq_no, data))
+                self.packet_timestamps[seq_no] = time.time()
+            i += 1
+        return packets
+
+    def send_packets_to_client(self, packets):
+        for seq, packet_data in packets:
+            # Retransmission due to timeout
+            # Normal Sending
+            packet = self.make_packet(seq, packet_data)
+            self.server_socket.sendto(packet, self.client_address)
+            self.LFS = seq
+            print(f"Sent seq {seq} ")
+
+    def send_eof(self):
+        eof_packet = self.make_packet(self.LFS + 1, b"EOF")
+        self.server_socket.sendto(eof_packet, self.client_address)
+        print("EOF sent to client")
+
+    def send_file(self):
+        """
+        Send a predefined file to the client, ensuring reliability over UDP.
+        """
+        print("Sending file to client")
+        # Initialize Client Variables
+        self.LAF = -1
+        self.LFS = -1
+        # Session Variables
+        self.duplicate_acks = {}
+        self.all_packets_read = False
+        # Assume the sequence number starts from 1
+        with open(SERVER_FILE_PATH, "rb") as f:
+            while True:
+                print(f"LAF: {self.LAF}, LFS: {self.LFS}")
+
+                # 1 - Determine the packets to be sent
+                packets_to_send = self.read_data_from_file(f)
+                print(f"Packets to send: {packets_to_send}")
+                # 2 - Send the Packets
+                self.send_packets_to_client(packets_to_send)
+                # 3 - Wait for the Acknowledgement
+                try:
+                    ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
+                    ack_num = int.from_bytes(ack, "big")
+                    self.LAF = ack_num
+                    print(f"Cumulative ACK received: {ack_num}")
+                except socket.timeout:
+                    print("Timeout occurred while waiting for ACK.")
+                    continue
+
+                # 4 - Update the window
+                # 5 - Check if the file is sent
+                if self.all_packets_read and self.LAF == self.LFS:
+                    self.send_eof()
+                    print("File sent successfully.")
+                    break
 
 
 # def send_file(server_ip, server_port, enable_fast_recovery):
