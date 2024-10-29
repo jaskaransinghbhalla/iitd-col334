@@ -16,7 +16,7 @@ class Server:
     # Threshold for duplicate ACKs to trigger fast recovery
     DUP_ACK_THRESHOLD = 3
     # Number of packets in flight
-    WINDOW_SIZE = 3
+    WINDOW_SIZE = 4
     # Initial timeout value, # Initialize timeout to some value but update it as ACK packets arrive
     INITIAL_TIMEOUT = 1.0
     # Buffer size for receiving packets
@@ -37,9 +37,17 @@ class Server:
         self.dev_rtt = 0.0
         self.timeout_interval = self.estimated_rtt + 4 * self.dev_rtt
         # Start listening for clients
+        self.client_count = 0
         while True:
-            self.packet_timestamps = {}
+            self.reset_session()
             self.listen_for_client()
+
+    def reset_session(self):
+        self.LAF = -1
+        self.LFS = -1
+        self.duplicate_acks = {}
+        self.all_packets_read = False
+        self.packet_timestamps = {}
 
     def listen_for_client(self):
         # Client Connection
@@ -87,14 +95,15 @@ class Server:
 
         packet_range_min = 0
         packet_range_max = self.WINDOW_SIZE
+
         if self.LAF != -1:
-            packet_range_min = self.LAF
-            packet_range_max = self.LAF + self.WINDOW_SIZE
-        
+            packet_range_min = self.LFS + 1
+            packet_range_max = self.LAF + self.WINDOW_SIZE + 1
+
         # Sender
         i = packet_range_min
         while i < packet_range_max:
-            seq_no = self.LFS + i + 1
+            seq_no = i
             data = file.read(self.MSS)
             if not data:
                 self.all_packets_read = True
@@ -137,7 +146,7 @@ class Server:
 
                 # 1 - Determine the packets to be sent
                 packets_to_send = self.read_data_from_file(f)
-                print(f"Packets to send: {packets_to_send}")
+                # print(f"Packets to send: {packets_to_send}")
                 # 2 - Send the Packets
                 self.send_packets_to_client(packets_to_send)
                 # 3 - Wait for the Acknowledgement
@@ -154,7 +163,9 @@ class Server:
                 # 5 - Check if the file is sent
                 if self.all_packets_read and self.LAF == self.LFS:
                     self.send_eof()
-                    print("File sent successfully.")
+                    self.client_count += 1
+
+                    print(f"File sent successfully {self.client_count} times.")
                     break
 
 
