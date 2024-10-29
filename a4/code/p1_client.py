@@ -62,31 +62,25 @@ class Client:
             # Recieve File
             time_out_counter = 0
             while True:
-                if time_out_counter > 3:
+                if time_out_counter > 10:
                     self.close_client()
                     break
                 try:
                     packet, _ = self.client_socket.recvfrom(self.BUFFER_SIZE)
                     time_out_counter = 0
-                    print("packet_rec")
                     self.process_packet(
                         packet,
                         download_file,
                     )
-                    print(self.eof_received, "---")
                     if self.eof_received:
-                        print("Break")
                         break
                 except socket.timeout:
-                    # time_out_counter += 1
+                    time_out_counter += 1
                     self.send_ack_to_server(self.expected_ack_num)
         self.client_socket.close()
 
     def process_packet(self, packet, download_file):
-        print("buffer", self.buffer)
         seq_num, data = self.parse_packet(packet)
-        # EOF
-        print("PARSED Seq num", seq_num, "Data ", data)
         if data == b"EOF":
             print("EOF Recieved")
             self.expected_ack_num += 1
@@ -114,7 +108,7 @@ class Client:
             if seq_num not in self.buffer:
                 self.buffer[seq_num] = data
         else:
-            print(f"Duplicate Packet - Seq: {seq_num}")
+            print(f"dropped duplicate packet seq: {seq_num}")
 
         # Send Ack to Server
         self.send_ack_to_server(self.expected_ack_num)
@@ -126,7 +120,7 @@ class Client:
     def send_ack_to_server(self, seq_to_be_acked):
         segment = seq_to_be_acked.to_bytes(4, "big")
         self.client_socket.sendto(segment, (self.server_ip, self.server_port))
-        print(f"Send : {seq_to_be_acked} ")
+        print("ACK Sent", seq_to_be_acked)
 
     # def parse_packet(self, packet):
     #     seq_length = struct.unpack("I", packet[:4])[0]
@@ -153,7 +147,6 @@ class Client:
     def handle_eof_recv(self):
         self.eof_received = True
         # send ACK for this EOF to the server
-        print("Sending Final Ack")
         self.send_ack_to_server(self.expected_ack_num)
         print("Final Ack Sent")
         self.close_client()

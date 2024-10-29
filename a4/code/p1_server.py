@@ -17,7 +17,7 @@ class Server:
     # Threshold for duplicate ACKs to trigger fast recovery
     DUP_ACK_THRESHOLD = 3
     # Number of packets in flight
-    WINDOW_SIZE = 4
+    WINDOW_SIZE = 1
     # Initial timeout value, # Initialize timeout to some value but update it as ACK packets arrive
     INITIAL_TIMEOUT = 1.0
     # Buffer size for receiving packets
@@ -112,13 +112,12 @@ class Server:
         start = self.LAF + 1
         end = self.LFS + 1
         retran_packets = []
-        print("error", self.packet_timestamps, self.LAF)
         for seq in range(start, end):
             if time.time() - self.packet_timestamps[seq] >= self.timeout_interval:
                 _, data = self.parse_packet(self.packet_in_flight[seq])
                 retran_packets.append((seq, data))
         return retran_packets
-        
+
     def parse_packet(self, packet):
         """
         Deserializes the binary packet back into 'seq' and 'data'.
@@ -128,7 +127,7 @@ class Server:
         # Decode the binary packet back into a JSON string
         json_str = packet.decode("utf-8")
         json_obj = json.loads(json_str)
-        
+
         # Extract and deserialize the data
         seq = int(json_obj.get("seq"))
         data = pickle.loads(json_obj.get("data").encode("latin1"))
@@ -143,13 +142,16 @@ class Server:
         """
         # Serialize the data using pickle and encode it in base64 for JSON compatibility
         serialized_data = pickle.dumps(data)
-        json_obj = json.dumps({
-            "seq": seq,
-            "data": serialized_data.decode("latin1")  # Decode to make it JSON-serializable
-        })
+        json_obj = json.dumps(
+            {
+                "seq": seq,
+                "data": serialized_data.decode(
+                    "latin1"
+                ),  # Decode to make it JSON-serializable
+            }
+        )
         return json_obj.encode("utf-8")
 
-   
     def send_packets_to_client(self, packets, retrans_packet=False):
         for seq, packet_data in packets:
             packet = self.make_packet(seq, packet_data)
@@ -174,45 +176,45 @@ class Server:
             sample_rtt - self.estimated_rtt
         )
         self.timeout_interval = self.estimated_rtt + 4 * self.dev_rtt
-        print(f"Timeout interval : {self.timeout_interval}")
+        # print(f"Timeout interval : {self.timeout_interval}")
 
     def handle_ack_recv(self, ack_num):
         if ack_num > self.LFS + self.WINDOW_SIZE:
             return
-        if ack_num - 1 <= self.LAF:
+        if ack_num <= self.LAF:
             return
         # Update ack condition
         self.LAF = ack_num - 1
-        print(f"Cumulative ACK received: {self.LAF}")
+        print(f"Cumulative ACK received: {ack_num}")
 
         # Calculate Sample RTT
         if self.LAF in self.packet_timestamps:
             self.update_time_interval(self.LAF)
-        if self.LAF in self.duplicate_acks:
-            self.duplicate_acks[self.LAF] += 1
+
+        if ack_num in self.duplicate_acks:
+            self.duplicate_acks[ack_num] += 1
         else:
-            self.duplicate_acks[self.LAF] = 1
-        duplicate_ack_count = self.duplicate_acks[self.LAF]
+            self.duplicate_acks[ack_num] = 1
+
+        duplicate_ack_count = self.duplicate_acks[ack_num]
+
         if self.fast_recovery:
-            if duplicate_ack_count >= self.DUP_ACK_THRESHOLD:
-                print(f"Fast recovery: Retransmitting packet {self.LAF}")
+            if duplicate_ack_count >= self.DUP_ACK_THRESHOLD and ack_num != self.LAF:
+                print(f"Fast recovery: Retransmitting seq {ack_num}")
                 # Find the packet and retransmit
-                seq = self.LAF
+                seq = ack_num
                 _, data = self.parse_packet(self.packet_in_flight[seq])
                 packet = self.make_packet(seq, data)
                 self.server_socket.sendto(packet, self.client_address)
                 self.packet_timestamps[seq] = time.time()
+                # self.duplicate_acks[ack_num] = 0
                 return
-
+        # print("Duplicate Acks", self.duplicate_acks)
         # Delete all the keys equal to and below ack_num
         for key in list(self.packet_timestamps.keys()):
             if key <= self.LAF:
-                print("Deleted key", key)
                 del self.packet_timestamps[key]
                 del self.packet_in_flight[key]
-                if self.fast_recovery:
-                    del self.duplicate_acks[key]
-        print("exited-handle_ack_recv")
 
     def send_eof(self):
         eof_packet = self.make_packet(self.LFS + 1, b"EOF")
@@ -229,22 +231,21 @@ class Server:
                 print(f"LAF: {self.LAF}, LFS: {self.LFS}")
 
                 # 1 - Determine the packets to be sent
-                packets_to_retransmit = self.get_retransmission_packets()
                 packets_to_send = self.read_data_from_file(f)
-
                 # 2 - Send the Packets
-                self.send_packets_to_client(packets_to_retransmit, retrans_packet=True)
                 self.send_packets_to_client(packets_to_send)
-                print("Packet in Flight", self.packet_in_flight)
+
                 # 3 - Wait for the Acknowledgement
                 try:
                     ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
                     ack_num = int.from_bytes(ack, "big")
                     self.handle_ack_recv(ack_num)
-
                 except socket.timeout:
                     print("Timeout occurred while waiting for ACK.")
                     continue
+
+                packets_to_retransmit = self.get_retransmission_packets()
+                self.send_packets_to_client(packets_to_retransmit, retrans_packet=True)
 
                 # 4 - Check if the file is sent
                 if self.all_packets_read and self.LAF == self.LFS:
@@ -256,10 +257,10 @@ class Server:
                         try:
                             ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
                             ack_num = int.from_bytes(ack, "big")
-                            if(ack_num == self.LAF + 2):
+                            if ack_num == self.LAF + 2:
                                 print("Final ack", ack_num)
                                 break
-                            
+
                         except socket.timeout:
                             print("Timeout occurred while waiting for EOF ACK.")
                             continue

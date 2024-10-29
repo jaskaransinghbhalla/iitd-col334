@@ -55,7 +55,7 @@ def run(expname):
 
     SERVER_IP = "10.0.0.1"
     SERVER_PORT = 6555
-    PREFIX_OUT = ".xyz"
+    PREFIX_OUT = ".xyz_"
 
     NUM_ITERATIONS = 5
     delay_list, loss_list = [], []
@@ -67,15 +67,13 @@ def run(expname):
         loss_list = [1]
     elif expname == "custom":
         delay_list = [20]
-        loss_list = [50]
+        loss_list = [1]
     print(loss_list, delay_list)
 
     # Loop to create the topology 10 times with varying loss (1% to 10%)
     for LOSS in loss_list:
         for DELAY in delay_list:
-            for FAST_RECOVERY in [
-                False, 
-            ]:
+            for FAST_RECOVERY in [True, False]:
                 for i in range(0, NUM_ITERATIONS):
                     print(
                         f"\n--- Running topology with {LOSS}% packet loss, {DELAY}ms delay and fast recovery {FAST_RECOVERY}"
@@ -104,11 +102,11 @@ def run(expname):
                     os.makedirs(log_folder, exist_ok=True)
                     server_log_file = os.path.join(
                         log_folder,
-                        f"server_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log",
+                        f"server_log_{expname}_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log",
                     )
                     client_log_file = os.path.join(
                         log_folder,
-                        f"client_log_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log",
+                        f"client_log_{expname}_loss_{LOSS}_delay_{DELAY}_fastrecovery_{FAST_RECOVERY}_iter_{i}.log",
                     )
 
                     with open(server_log_file, "w") as server_log:
@@ -117,7 +115,7 @@ def run(expname):
                         )
                     with open(client_log_file, "w") as client_log:
                         h2.cmd(
-                            f"python3 -u p1_client.py {SERVER_IP} {SERVER_PORT} --pref_outfile {PREFIX_OUT} > {client_log_file} 2>&1"
+                            f"python3 -u p1_client.py {SERVER_IP} {SERVER_PORT} --pref_outfile {PREFIX_OUT+expname} > {client_log_file} 2>&1"
                         )
                     end_time = time.time()
                     ttc = end_time - start_time
