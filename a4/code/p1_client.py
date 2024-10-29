@@ -41,7 +41,9 @@ class Client:
         with open(self.output_filename, "wb") as download_file:
 
             # Ping Server to Send File
+
             while True:
+
                 try:
                     print(f"{self.server_ip}:{self.server_port} /GET")
                     self.client_socket.sendto(
@@ -58,11 +60,15 @@ class Client:
                     continue
 
             # Recieve File
+            time_out_counter = 0
             while True:
+                if time_out_counter > 3:
+                    self.close_client()
+                    break
                 try:
                     packet, _ = self.client_socket.recvfrom(self.BUFFER_SIZE)
-                    # deserialise the binary string into a json
-                    # packet = json.loads(packet)
+                    time_out_counter = 0
+                    print("packet_rec")
                     self.process_packet(
                         packet,
                         download_file,
@@ -72,6 +78,7 @@ class Client:
                         print("Break")
                         break
                 except socket.timeout:
+                    # time_out_counter += 1
                     self.send_ack_to_server(self.expected_ack_num)
         self.client_socket.close()
 
@@ -92,7 +99,7 @@ class Client:
             self.expected_ack_num += 1
             # Write Existing in Buffer
             while self.expected_ack_num in self.buffer:
-                # This is where the 
+                # This is where the
                 data = self.buffer.pop(self.expected_ack_num)
 
                 print("Writing from buffer to the file ", data)
@@ -137,7 +144,7 @@ class Client:
         # Decode the binary packet back into a JSON string
         json_str = packet.decode("utf-8")
         json_obj = json.loads(json_str)
-        
+
         # Extract and deserialize the data
         seq = int(json_obj.get("seq"))
         data = pickle.loads(json_obj.get("data").encode("latin1"))

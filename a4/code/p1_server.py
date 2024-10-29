@@ -256,8 +256,10 @@ class Server:
                         try:
                             ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
                             ack_num = int.from_bytes(ack, "big")
-                            print("Final ack", ack_num)
-                            break
+                            if(ack_num == self.LAF + 2):
+                                print("Final ack", ack_num)
+                                break
+                            
                         except socket.timeout:
                             print("Timeout occurred while waiting for EOF ACK.")
                             continue
