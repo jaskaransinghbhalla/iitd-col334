@@ -66,22 +66,24 @@ class Client:
                         packet,
                         download_file,
                     )
+                    print(self.eof_received, "---")
                     if self.eof_received:
+                        print("Break")
                         break
                 except socket.timeout:
                     self.send_ack_to_server(self.expected_ack_num)
         self.client_socket.close()
 
     def process_packet(self, packet, download_file):
-
+        print("buffer", self.buffer)
         seq_num, data = self.parse_packet(packet)
-
+        print("data", data)
         # EOF
+        print(data)
         if data == b"EOF":
+            print("EOF Recieved")
             self.expected_ack_num += 1
-            self.handle_eof_recv()
-            # send ACK for this EOF to the server
-
+            self.handle_eof_recv()  # send ACK for this EOF to the server
             return
         # Expected/Desired Packet
         elif seq_num == self.expected_ack_num:
@@ -123,9 +125,12 @@ class Client:
     def handle_eof_recv(self):
         self.eof_received = True
         # send ACK for this EOF to the server
+        print("Sending Final Ack")
         self.send_ack_to_server(self.expected_ack_num)
-        
+        print("Final Ack Sent")
+        self.close_client()
         print("File downloaded successfully")
+        return
 
     def close_client(self):
         self.client_socket.close()

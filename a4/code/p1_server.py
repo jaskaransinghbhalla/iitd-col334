@@ -22,6 +22,7 @@ class Server:
     # Buffer size for receiving packets
     BUFFER_SIZE = 1000  # 64
     # Packets in flight
+    RETRY_BEFORE_QUIT = 10
 
     def __init__(self, server_ip, server_port, fast_recovery):
         self.server_ip = server_ip
@@ -73,7 +74,7 @@ class Server:
             raise e
 
     def get_file_read_offset(self):
-        if self.LFS == -1:
+        if self.LFS == -1 or self.LAF == -1:
             return 0
         return self.LFS * self.MSS + 1
 
@@ -151,6 +152,8 @@ class Server:
     def handle_ack_recv(self, ack_num):
         if ack_num > self.LFS + self.WINDOW_SIZE:
             return
+        if ack_num - 1 <= self.LAF:
+            return
         # Update ack condition
         self.LAF = ack_num - 1
         print(f"Cumulative ACK received: {self.LAF}")
@@ -176,8 +179,8 @@ class Server:
 
         # Delete all the keys equal to and below ack_num
         for key in list(self.packet_timestamps.keys()):
-
             if key <= self.LAF:
+                print("Deleted key", key)
                 del self.packet_timestamps[key]
                 del self.packet_in_flight[key]
                 if self.fast_recovery:
@@ -205,7 +208,7 @@ class Server:
                 # 2 - Send the Packets
                 self.send_packets_to_client(packets_to_retransmit, retrans_packet=True)
                 self.send_packets_to_client(packets_to_send)
-
+                print("Packet in Flight", self.packet_in_flight)
                 # 3 - Wait for the Acknowledgement
                 try:
                     ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
@@ -218,19 +221,21 @@ class Server:
 
                 # 4 - Check if the file is sent
                 if self.all_packets_read and self.LAF == self.LFS:
-                    print("Condition Satisfied")
-                    self.send_eof()
-                    print("EOF Sent")
-                    self.client_count += 1
-
-                    try:
-                        ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
-                        ack_num = int.from_bytes(ack, "big")
-                        print("Final ack", ack_num)
-                    except socket.timeout:
-                        print("Timeout occurred while waiting for EOF ACK.")
-                        return
+                    eof_counter = 0
+                    while eof_counter < self.RETRY_BEFORE_QUIT:
+                        self.send_eof()
+                        eof_counter = eof_counter + 1
+                        print("EOF Sent")
+                        try:
+                            ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
+                            ack_num = int.from_bytes(ack, "big")
+                            print("Final ack", ack_num)
+                            break
+                        except socket.timeout:
+                            print("Timeout occurred while waiting for EOF ACK.")
+                            continue
                     print(f"File sent successfully {self.client_count} times.")
+                    self.client_count += 1
                     return
 
 
