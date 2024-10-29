@@ -86,9 +86,11 @@ def receive_file(server_ip, server_port, pref_outfile):
 def process_packet(
     packet, buffer, client_socket, server_ip, server_port, f, expected_ack_num
 ):
+    seq_to_be_acked = 0
     seq_num, data = parse_packet(packet)
     # EOF
     if data == b"EOF":
+        seq_to_be_acked = seq_num
         handle_EOF_recv()
         return None
     # Expected/Desired Packet
@@ -99,16 +101,18 @@ def process_packet(
         while expected_ack_num in buffer:
             f.write(buffer.pop(expected_ack_num))
             expected_ack_num += 1
-        ack_num = expected_ack_num
+        seq_to_be_acked = expected_ack_num - 1
     # Out of Order Packet
     elif seq_num > expected_ack_num:
         print(f"Out of Order - Expected : {expected_ack_num}, Received:  {seq_num}")
         if seq_num not in buffer:
             buffer[seq_num] = data
+    else :
+        return expected_ack_num, buffer
 
     # Send Ack to Server
-    send_ack_to_server(client_socket, expected_ack_num, server_ip, server_port)
-    print(f"Recieves seq {seq_num}\tP, ACK for seq {expected_ack_num}")
+    send_ack_to_server(client_socket, seq_to_be_acked, server_ip, server_port)
+    print(f"Recieves seq {seq_num}\t, ACK for seq {seq_to_be_acked}, Expecting seq {expected_ack_num}")
     return expected_ack_num, buffer
 
 
@@ -121,12 +125,15 @@ def handle_EOF_recv():
     print("File downloaded successfully")
 
 
-# Parse command-line arguments
-parser = argparse.ArgumentParser(description="Reliable file receiver over UDP.")
-parser.add_argument("server_ip", help="IP address of the server")
-parser.add_argument("server_port", type=int, help="Port number of the server")
-parser.add_argument("--pref_outfile", default="", help="Prefix for the output file")
-args = parser.parse_args()
+def read_args():
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Reliable file receiver over UDP.")
+    parser.add_argument("server_ip", help="IP address of the server")
+    parser.add_argument("server_port", type=int, help="Port number of the server")
+    parser.add_argument("--pref_outfile", default="", help="Prefix for the output file")
+    args = parser.parse_args()
+    return (args.server_ip, args.server_port, args.pref_outfile)
+
 
 # Run the client
-receive_file(args.server_ip, args.server_port, args.pref_outfile)
+receive_file(*read_args())
