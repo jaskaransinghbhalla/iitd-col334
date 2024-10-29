@@ -1,7 +1,8 @@
 import socket
 import time
 import argparse
-import struct
+import json
+import pickle
 
 # SERVER_FILE_PATH = "./test/test_10KB.bin"
 SERVER_FILE_PATH = "./test/test.txt"
@@ -114,15 +115,41 @@ class Server:
         print("error", self.packet_timestamps, self.LAF)
         for seq in range(start, end):
             if time.time() - self.packet_timestamps[seq] >= self.timeout_interval:
-                retran_packets.append((seq, self.packet_in_flight[seq]))
+                _, data = self.parse_packet(self.packet_in_flight[seq])
+                retran_packets.append((seq, data))
         return retran_packets
+        
+    def parse_packet(self, packet):
+        """
+        Deserializes the binary packet back into 'seq' and 'data'.
+        :param packet: bytes, binary serialized packet
+        :return: dict, with 'seq' and 'data' keys
+        """
+        # Decode the binary packet back into a JSON string
+        json_str = packet.decode("utf-8")
+        json_obj = json.loads(json_str)
+        
+        # Extract and deserialize the data
+        seq = int(json_obj.get("seq"))
+        data = pickle.loads(json_obj.get("data").encode("latin1"))
+        return seq, data
 
     def make_packet(self, seq, data):
-        seq_bytes = seq.to_bytes((seq.bit_length() + 7) // 8, byteorder="big")
-        seq_length = len(seq_bytes)
-        serialised_data = struct.pack("I", seq_length) + seq_bytes + data
-        return serialised_data
+        """
+        Serializes the JSON object with 'seq' and binary 'data' into a binary string.
+        :param seq: int, sequence number
+        :param data: bytes, binary data
+        :return: bytes, binary serialized packet
+        """
+        # Serialize the data using pickle and encode it in base64 for JSON compatibility
+        serialized_data = pickle.dumps(data)
+        json_obj = json.dumps({
+            "seq": seq,
+            "data": serialized_data.decode("latin1")  # Decode to make it JSON-serializable
+        })
+        return json_obj.encode("utf-8")
 
+   
     def send_packets_to_client(self, packets, retrans_packet=False):
         for seq, packet_data in packets:
             packet = self.make_packet(seq, packet_data)
@@ -171,8 +198,8 @@ class Server:
                 print(f"Fast recovery: Retransmitting packet {self.LAF}")
                 # Find the packet and retransmit
                 seq = self.LAF
-                packet_data = self.packet_in_flight[seq]
-                packet = self.make_packet(seq, packet_data)
+                _, data = self.parse_packet(self.packet_in_flight[seq])
+                packet = self.make_packet(seq, data)
                 self.server_socket.sendto(packet, self.client_address)
                 self.packet_timestamps[seq] = time.time()
                 return

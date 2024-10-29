@@ -1,6 +1,7 @@
 import argparse
 import socket
-import struct
+import json
+import pickle
 
 DOWNLOAD_FILE_NAME = "downloaded_file.txt"
 
@@ -77,9 +78,8 @@ class Client:
     def process_packet(self, packet, download_file):
         print("buffer", self.buffer)
         seq_num, data = self.parse_packet(packet)
-        print("data", data)
         # EOF
-        print(data)
+        print("PARSED Seq num", seq_num, "Data ", data)
         if data == b"EOF":
             print("EOF Recieved")
             self.expected_ack_num += 1
@@ -87,11 +87,17 @@ class Client:
             return
         # Expected/Desired Packet
         elif seq_num == self.expected_ack_num:
+
             download_file.write(data)
             self.expected_ack_num += 1
             # Write Existing in Buffer
             while self.expected_ack_num in self.buffer:
-                download_file.write(self.buffer.pop(self.expected_ack_num))
+                # This is where the 
+                data = self.buffer.pop(self.expected_ack_num)
+
+                print("Writing from buffer to the file ", data)
+                # seq, data = self.parse_packet(packet)
+                download_file.write(data)
                 self.expected_ack_num += 1
         # Out of Order Packet
         elif seq_num > self.expected_ack_num:
@@ -115,11 +121,26 @@ class Client:
         self.client_socket.sendto(segment, (self.server_ip, self.server_port))
         print(f"Send : {seq_to_be_acked} ")
 
+    # def parse_packet(self, packet):
+    #     seq_length = struct.unpack("I", packet[:4])[0]
+    #     seq_bytes = packet[4 : 4 + seq_length]
+    #     seq = int.from_bytes(seq_bytes, "big")
+    #     data = packet[4 + seq_length :]
+    #     return seq, data
+
     def parse_packet(self, packet):
-        seq_length = struct.unpack("I", packet[:4])[0]
-        seq_bytes = packet[4 : 4 + seq_length]
-        seq = int.from_bytes(seq_bytes, "big")
-        data = packet[4 + seq_length :]
+        """
+        Deserializes the binary packet back into 'seq' and 'data'.
+        :param packet: bytes, binary serialized packet
+        :return: dict, with 'seq' and 'data' keys
+        """
+        # Decode the binary packet back into a JSON string
+        json_str = packet.decode("utf-8")
+        json_obj = json.loads(json_str)
+        
+        # Extract and deserialize the data
+        seq = int(json_obj.get("seq"))
+        data = pickle.loads(json_obj.get("data").encode("latin1"))
         return seq, data
 
     def handle_eof_recv(self):
