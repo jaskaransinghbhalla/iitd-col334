@@ -183,8 +183,10 @@ class Server:
                     # Delete all the keys equal to and below ack_num
                     for key in list(self.packet_timestamps.keys()):
                         if key <= ack_num:
-                            del self.packet_timestamps[key]
-                            del self.packet_in_flight[key]
+                            if key in self.packet_timestamps:
+                                del self.packet_timestamps[key]
+                            if key in self.packet_in_flight:
+                                del self.packet_in_flight[key]
                 except socket.timeout:
                     print("Timeout occurred while waiting for ACK.")
                     continue
