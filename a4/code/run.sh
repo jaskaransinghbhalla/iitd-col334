@@ -1,3 +1,4 @@
+# ryu run ryu.app.simple_switch &
 sudo rm -rf logs
 sudo mn -c
 sudo rm .xyz_*
