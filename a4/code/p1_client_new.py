@@ -2,127 +2,131 @@ import argparse
 import socket
 import struct
 
-# Constants
-# Maximum Segment Size
-MSS = 1400
-# Buffer Size
-BUFFER_SIZE = MSS + 1000
-# Output File
-OUTPUT_FILE = "out.bin"
+DOWNLOAD_FILE_NAME = "downloaded_file.txt"
 
 
-def parse_packet(packet):
-    seq_length = struct.unpack("I", packet[:4])[0]
-    seq_bytes = packet[4 : 4 + seq_length]
-    seq = int.from_bytes(seq_bytes, "big")
-    data = packet[4 + seq_length :]
-    return seq, data
+class Client:
+    def __init__(self, server_ip, server_port, pref_outfile, download_file_name):
 
+        # Constants
+        # Maximum Segment Size
+        self.MSS = 1
+        # Buffer Size
+        self.BUFFER_SIZE = self.MSS + 1000
 
-def receive_file(server_ip, server_port, pref_outfile):
-    """
-    Receive the file from the server with reliability, handling packet loss
-    and reordering.
-    """
-    # Initialize UDP socket
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Set timeout for server response
-    client_socket.settimeout(2)
+        self.server_ip = server_ip
+        self.server_port = server_port
+        self.pref_outfile = pref_outfile
 
-    # Output File
-    output_filename = f"{pref_outfile}_{OUTPUT_FILE}"
+        # Initialize UDP socket
+        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Set timeout for server response
+        self.client_socket.settimeout(2)
 
-    # Process Variables
-    buffer = {}
-    expected_ack_num = 0
+        # Output File
+        self.output_filename = f"{pref_outfile}_{download_file_name}"
+        self.eof_recieved = False
+        self.receive_file()
 
-    with open(output_filename, "wb") as f:
+    def receive_file(self):
+        """
+        Receive the file from the server with reliability, handling packet loss
+        and reordering.
+        """
+        # Process Variables
+        self.buffer = {}
+        self.expected_ack_num = 0
 
-        # Ping Server to Send File
-        while True:
-            try:
-                print(f"{server_ip}:{server_port} /GET")
-                client_socket.sendto("GET".encode(), (server_ip, server_port))
-                packet, _ = client_socket.recvfrom(BUFFER_SIZE)
-                print("Downloading file from server")
-                expected_ack_num, buffer = process_packet(
-                    packet,
-                    buffer,
-                    client_socket,
-                    server_ip,
-                    server_port,
-                    f,
-                    expected_ack_num,
-                )
-                break
-            except socket.timeout:
-                continue
+        with open(self.output_filename, "wb") as download_file:
 
-        # Recieve File
-        while True:
-            try:
-                packet, _ = client_socket.recvfrom(BUFFER_SIZE)
-                # deserialise the binary string into a json
-                # packet = json.loads(packet)
-                result = process_packet(
-                    packet,
-                    buffer,
-                    client_socket,
-                    server_ip,
-                    server_port,
-                    f,
-                    expected_ack_num,
-                )
-                if result is not None:
-                    expected_ack_num, buffer = result
-                else:
+            # Ping Server to Send File
+            while True:
+                try:
+                    print(f"{self.server_ip}:{self.server_port} /GET")
+                    self.client_socket.sendto(
+                        "GET".encode(), (self.server_ip, self.server_port)
+                    )
+                    print("Downloading file from server")
+                    packet, _ = self.client_socket.recvfrom(self.BUFFER_SIZE)
+                    self.process_packet(
+                        packet,
+                        download_file,
+                    )
                     break
-            except socket.timeout:
-                send_ack_to_server(
-                    client_socket, expected_ack_num, server_ip, server_port
-                )
+                except socket.timeout:
+                    continue
 
+            # Recieve File
+            while True:
+                try:
+                    packet, _ = self.client_socket.recvfrom(self.BUFFER_SIZE)
+                    # deserialise the binary string into a json
+                    # packet = json.loads(packet)
+                    self.process_packet(
+                        packet,
+                        download_file,
+                    )
+                    if self.eof_recieved:
+                        break
+                except socket.timeout:
+                    self.send_ack_to_server()
 
-def process_packet(
-    packet, buffer, client_socket, server_ip, server_port, f, expected_ack_num
-):
-    seq_to_be_acked = 0
-    seq_num, data = parse_packet(packet)
-    # EOF
-    if data == b"EOF":
-        seq_to_be_acked = seq_num
-        handle_EOF_recv()
-        return None
-    # Expected/Desired Packet
-    elif seq_num == expected_ack_num:
-        f.write(data)
-        expected_ack_num += 1
-        # Write Existing in Buffer
-        while expected_ack_num in buffer:
-            f.write(buffer.pop(expected_ack_num))
-            expected_ack_num += 1
-        seq_to_be_acked = expected_ack_num - 1
-    # Out of Order Packet
-    elif seq_num > expected_ack_num:
-        print(f"Out of Order - Expected : {expected_ack_num}, Received:  {seq_num}")
-        if seq_num not in buffer:
-            buffer[seq_num] = data
-    else :
+    def process_packet(self, packet, download_file):
+
+        seq_to_be_acked = 0
+        seq_num, data = self.parse_packet(packet)
+
+        # EOF
+        if data == b"EOF":
+            seq_to_be_acked = seq_num
+            self.handle_eof_recv()
+        # Expected/Desired Packet
+        elif seq_num == self.expected_ack_num:
+            download_file.write(data)
+            self.expected_ack_num += 1
+            # Write Existing in Buffer
+            while self.expected_ack_num in self.buffer:
+                download_file.write(self.buffer.pop(self.expected_ack_num))
+                self.expected_ack_num += 1
+            seq_to_be_acked = self.expected_ack_num - 1
+        # Out of Order Packet
+        elif seq_num > self.expected_ack_num:
+            print(
+                f"Out of Order - Expected : {self.expected_ack_num}, Received:  {seq_num}"
+            )
+            if seq_num not in self.buffer:
+                self.buffer[seq_num] = data
+        else:
+            print(f"Duplicate Packet - Seq: {seq_num}")
+        return
+
+        # Send Ack to Server
+        self.send_ack_to_server(client_socket, seq_to_be_acked, server_ip, server_port)
+        print(
+            f"Recieves seq {seq_num}\t, ACK for seq {seq_to_be_acked}, Expecting seq {expected_ack_num}"
+        )
         return expected_ack_num, buffer
 
-    # Send Ack to Server
-    send_ack_to_server(client_socket, seq_to_be_acked, server_ip, server_port)
-    print(f"Recieves seq {seq_num}\t, ACK for seq {seq_to_be_acked}, Expecting seq {expected_ack_num}")
-    return expected_ack_num, buffer
+    def send_ack_to_server(self):
+        self.client_socket.sendto(
+            self.expected_ack_num.to_bytes(4, "big"), (self.server_ip, self.server_port)
+        )
 
+    def parse_packet(self, packet):
+        seq_length = struct.unpack("I", packet[:4])[0]
+        seq_bytes = packet[4 : 4 + seq_length]
+        seq = int.from_bytes(seq_bytes, "big")
+        data = packet[4 + seq_length :]
+        return seq, data
 
-def send_ack_to_server(client_socket, expected_ack_num, server_ip, server_port):
-    client_socket.sendto(expected_ack_num.to_bytes(4, "big"), (server_ip, server_port))
+    def handle_eof_recv(self):
+        self.eof_recieved = True
+        self.client_socket.close()
+        print("File downloaded successfully")
 
-
-def handle_EOF_recv():
-    # To be Completed
-    print("File downloaded successfully")
+    def close_client(self):
+        self.client_socket.close()
+        print("Client Socket Closed")
 
 
 def read_args():
@@ -135,5 +139,6 @@ def read_args():
     return (args.server_ip, args.server_port, args.pref_outfile)
 
 
-# Run the client
-receive_file(*read_args())
+if __name__ == "__main__":
+    # Run the client
+    client = Client(*read_args(), DOWNLOAD_FILE_NAME)
