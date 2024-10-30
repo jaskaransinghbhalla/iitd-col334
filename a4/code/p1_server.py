@@ -1,8 +1,7 @@
 import socket
 import time
 import argparse
-import json
-import pickle
+from utils import make_packet, parse_packet
 
 # SERVER_FILE_PATH = "./test/test_10KB.bin"
 SERVER_FILE_PATH = "./test/test.txt"
@@ -114,47 +113,14 @@ class Server:
         retran_packets = []
         for seq in range(start, end):
             if time.time() - self.packet_timestamps[seq] >= self.timeout_interval:
-                _, data = self.parse_packet(self.packet_in_flight[seq])
+                _, data = parse_packet(self.packet_in_flight[seq])
                 retran_packets.append((seq, data))
         return retran_packets
 
-    def parse_packet(self, packet):
-        """
-        Deserializes the binary packet back into 'seq' and 'data'.
-        :param packet: bytes, binary serialized packet
-        :return: dict, with 'seq' and 'data' keys
-        """
-        # Decode the binary packet back into a JSON string
-        json_str = packet.decode("utf-8")
-        json_obj = json.loads(json_str)
-
-        # Extract and deserialize the data
-        seq = int(json_obj.get("seq"))
-        data = pickle.loads(json_obj.get("data").encode("latin1"))
-        return seq, data
-
-    def make_packet(self, seq, data):
-        """
-        Serializes the JSON object with 'seq' and binary 'data' into a binary string.
-        :param seq: int, sequence number
-        :param data: bytes, binary data
-        :return: bytes, binary serialized packet
-        """
-        # Serialize the data using pickle and encode it in base64 for JSON compatibility
-        serialized_data = pickle.dumps(data)
-        json_obj = json.dumps(
-            {
-                "seq": seq,
-                "data": serialized_data.decode(
-                    "latin1"
-                ),  # Decode to make it JSON-serializable
-            }
-        )
-        return json_obj.encode("utf-8")
 
     def send_packets_to_client(self, packets, retrans_packet=False):
         for seq, packet_data in packets:
-            packet = self.make_packet(seq, packet_data)
+            packet = make_packet(seq, packet_data)
             self.server_socket.sendto(packet, self.client_address)
             self.packet_timestamps[seq] = time.time()
             self.packet_in_flight[seq] = packet
@@ -203,8 +169,8 @@ class Server:
                 print(f"Fast recovery: Retransmitting seq {ack_num}")
                 # Find the packet and retransmit
                 seq = ack_num
-                _, data = self.parse_packet(self.packet_in_flight[seq])
-                packet = self.make_packet(seq, data)
+                _, data = parse_packet(self.packet_in_flight[seq])
+                packet = make_packet(seq, data)
                 self.server_socket.sendto(packet, self.client_address)
                 self.packet_timestamps[seq] = time.time()
                 # self.duplicate_acks[ack_num] = 0
@@ -217,7 +183,7 @@ class Server:
                 del self.packet_in_flight[key]
 
     def send_eof(self):
-        eof_packet = self.make_packet(self.LFS + 1, b"EOF")
+        eof_packet = make_packet(self.LFS + 1, b"EOF")
         self.server_socket.sendto(eof_packet, self.client_address)
 
     def send_file(self):
@@ -253,19 +219,20 @@ class Server:
                     while eof_counter < self.RETRY_BEFORE_QUIT:
                         self.send_eof()
                         eof_counter = eof_counter + 1
-                        print("EOF Sent")
+                        print(f"Trying for {eof_counter} time. EOF Sent")
                         try:
                             ack, _ = self.server_socket.recvfrom(self.BUFFER_SIZE)
                             ack_num = int.from_bytes(ack, "big")
                             if ack_num == self.LAF + 2:
                                 print("Final ack", ack_num)
                                 break
+                                
 
                         except socket.timeout:
                             print("Timeout occurred while waiting for EOF ACK.")
                             continue
-                    print(f"File sent successfully {self.client_count} times.")
                     self.client_count += 1
+                    print(f"File sent successfully {self.client_count} times.")
                     return
 
 

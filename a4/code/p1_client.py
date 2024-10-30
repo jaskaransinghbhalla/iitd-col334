@@ -1,7 +1,6 @@
 import argparse
 import socket
-import json
-import pickle
+from utils import parse_packet
 
 DOWNLOAD_FILE_NAME = "downloaded_file.txt"
 
@@ -80,7 +79,7 @@ class Client:
         self.client_socket.close()
 
     def process_packet(self, packet, download_file):
-        seq_num, data = self.parse_packet(packet)
+        seq_num, data = parse_packet(packet)
         if data == b"EOF":
             print("EOF Recieved")
             self.expected_ack_num += 1
@@ -97,7 +96,6 @@ class Client:
                 data = self.buffer.pop(self.expected_ack_num)
 
                 print("Writing from buffer to the file ", data)
-                # seq, data = self.parse_packet(packet)
                 download_file.write(data)
                 self.expected_ack_num += 1
         # Out of Order Packet
@@ -122,27 +120,6 @@ class Client:
         self.client_socket.sendto(segment, (self.server_ip, self.server_port))
         print("ACK Sent", seq_to_be_acked)
 
-    # def parse_packet(self, packet):
-    #     seq_length = struct.unpack("I", packet[:4])[0]
-    #     seq_bytes = packet[4 : 4 + seq_length]
-    #     seq = int.from_bytes(seq_bytes, "big")
-    #     data = packet[4 + seq_length :]
-    #     return seq, data
-
-    def parse_packet(self, packet):
-        """
-        Deserializes the binary packet back into 'seq' and 'data'.
-        :param packet: bytes, binary serialized packet
-        :return: dict, with 'seq' and 'data' keys
-        """
-        # Decode the binary packet back into a JSON string
-        json_str = packet.decode("utf-8")
-        json_obj = json.loads(json_str)
-
-        # Extract and deserialize the data
-        seq = int(json_obj.get("seq"))
-        data = pickle.loads(json_obj.get("data").encode("latin1"))
-        return seq, data
 
     def handle_eof_recv(self):
         self.eof_received = True
