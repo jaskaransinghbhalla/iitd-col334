@@ -3,8 +3,10 @@ import time
 import argparse
 from utils import make_packet, parse_packet
 
-# SERVER_FILE_PATH = "./test/test_10KB.bin"
-SERVER_FILE_PATH = "./test/test_100MB.bin"
+SERVER_FILE_PATH = "./test/test_10KB.bin"
+# SERVER_FILE_PATH = "./test/test_1MB.bin"
+# SERVER_FILE_PATH = "./test/test_10MB.bin"
+# SERVER_FILE_PATH = "./test/test_100MB.bin"
 
 
 class Server:

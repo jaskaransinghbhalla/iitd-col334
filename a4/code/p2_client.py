@@ -3,8 +3,7 @@ import socket
 from utils import parse_packet
 import time
 
-DOWNLOAD_FILE_NAME = "downloaded_file.txt"
-
+DOWNLOAD_FILE_NAME = "downloaded_file.bin"
 
 class Client:
     def __init__(self, server_ip, server_port, pref_outfile, download_file_name):

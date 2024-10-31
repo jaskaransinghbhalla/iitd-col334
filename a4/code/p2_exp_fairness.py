@@ -1,3 +1,4 @@
+import argparse
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.link import TCLink
@@ -57,7 +58,7 @@ def compute_md5(file_path):
         print(f"File not found: {file_path}")
         return None
 
-def run():
+def run(enable_log):
     # Set the log level to info to see detailed output
     setLogLevel('info')
     
@@ -76,9 +77,10 @@ def run():
     SERVER_IP2 = "10.0.0.4"
     SERVER_PORT2 = 6556
             
-    NUM_ITERATIONS = 5 
-    OUTFILE = 'received_file.txt'
+    NUM_ITERATIONS = 5
+    OUTFILE = 'downloaded_file.bin'
     delay_list = [x for x in range(0, 101, 20)]
+    # delay_list = [20]
     
     # Loop to create the topology 10 times with varying loss (1% to 10%)
     for DELAY in delay_list:
@@ -106,37 +108,88 @@ def run():
             
             pref_c1 = "1"
             pref_c2 = "2"
-            s1_cmd = f"python3 p2_server.py {SERVER_IP1} {SERVER_PORT1} &"
-            s2_cmd = f"python3 p2_server.py {SERVER_IP2} {SERVER_PORT2} &"
-            c1_cmd = f"python3 p2_client.py {SERVER_IP1} {SERVER_PORT1} --pref_outfile {pref_c1} &"
-            c2_cmd = f"python3 p2_client.py {SERVER_IP2} {SERVER_PORT2} --pref_outfile {pref_c2} &"
+            s1_cmd = f"python3 -u p2_server.py {SERVER_IP1} {SERVER_PORT1} &"
+            s2_cmd = f"python3 -u p2_server.py {SERVER_IP2} {SERVER_PORT2} &"
+            c1_cmd = f"python3 -u p2_client.py {SERVER_IP1} {SERVER_PORT1} --pref_outfile {pref_c1} &"
+            c2_cmd = f"python3 -u p2_client.py {SERVER_IP2} {SERVER_PORT2} --pref_outfile {pref_c2} &"
 
-            s1_pid = s1.cmd(s1_cmd)
-            s2_pid = s2.cmd(s2_cmd)
+            if enable_log:
+                log_folder = "p2_logs"
+                os.makedirs(log_folder, exist_ok=True)
+                server1_log_file = os.path.join(
+                    log_folder,
+                    f"server1_{DELAY}_{i}.log"
+                )
+                server2_log_file = os.path.join(
+                    log_folder,
+                    f"server2_{DELAY}_{i}.log"
+                )
+                
+                client1_log_file = os.path.join(
+                    log_folder,
+                    f"client1_{DELAY}_{i}.log"
+                )
+                client2_log_file = os.path.join(
+                    log_folder,
+                    f"client2_{DELAY}_{i}.log"
+                )
+                with open(server1_log_file, "w") as server1_log:
+                    s1.cmd(f"python3 -u p2_server.py {SERVER_IP1} {SERVER_PORT1} > {server1_log_file} 2>&1 &")
+                with open(server2_log_file, "w") as server2_log:
+                    s2.cmd(f"python3 -u p2_server.py {SERVER_IP2} {SERVER_PORT2} > {server2_log_file} 2>&1 &")
+            else:
+                s1.cmd(s1_cmd)
+                s2.cmd(s2_cmd)
+            
             time.sleep(1)
             
             start_time_c1 = time.time()
             c1_pid = ""
             c2_pid = ""
-            while True:
-                c1_pid_raw = c1.cmd(c1_cmd).strip()
-                if len(c1_pid_raw.split()) == 0:
-                    continue
-                else:
-                    c1_pid = c1_pid_raw.split()[-1]
-                    print("started client 1 with PID: {c1_pid}")
-                    break
+            if enable_log:
+                with open(client1_log_file, "w") as client1_log:
+                    while True:
+                        c1_pid_raw = c1.cmd(f"python3 -u p2_client.py {SERVER_IP1} {SERVER_PORT1} --pref_outfile {pref_c1} > {client1_log_file} 2>&1 &").strip()
+                        # c1_pid_raw = c1.cmd(c1_cmd).strip()
+                        if len(c1_pid_raw.split()) == 0:
+                            continue
+                        else:
+                            c1_pid = c1_pid_raw.split()[-1]
+                            print(f"started client 1 with PID: {c1_pid}")
+                            break
+            else:
+                while True:
+                    c1_pid_raw = c1.cmd(c1_cmd)
+                    if len(c1_pid_raw.split()) == 0:
+                        continue
+                    else:
+                        c1_pid = c1_pid_raw.split()[-1]
+                        print(f"started client 1 with PID: {c1_pid}")
+                        break
+            
             
             start_time_c2 = time.time()
 
-            while True:
-                c2_pid_raw = c2.cmd(c2_cmd).strip()
-                if len(c2_pid_raw.split()) == 0:
-                    continue
-                else:
-                    c2_pid = c2_pid_raw.split()[-1]
-                    print(f"started client 2 with PID: {c2_pid}")
-                    break
+            if enable_log:
+                with open(client2_log_file, "w") as client2_log:
+                    while True:
+                        c2_pid_raw = c2.cmd(f"python3 -u p2_client.py {SERVER_IP2} {SERVER_PORT2} --pref_outfile {pref_c2} > {client2_log_file} 2>&1 &").strip()
+                        # c2_pid_raw = c2.cmd(c2_cmd).strip()
+                        if len(c2_pid_raw.split()) == 0:
+                            continue
+                        else:
+                            c2_pid = c2_pid_raw.split()[-1]
+                            print(f"started client 2 with PID: {c2_pid}")
+                            break
+            else:
+                while True:
+                    c2_pid_raw = c2.cmd(c2_cmd)
+                    if len(c2_pid_raw.split()) == 0:
+                        continue
+                    else:
+                        c2_pid = c2_pid_raw.split()[-1]
+                        print(f"started client 2 with PID: {c2_pid}")
+                        break
             
             #CLI(net)
             end_time_c1 = None
@@ -166,8 +219,8 @@ def run():
             
             print(dur_c1, dur_c2, jfi) 
             # calculate md5 hash
-            hash1 = compute_md5(f"{pref_c1}received_file.txt")
-            hash2 = compute_md5(f"{pref_c2}received_file.txt")
+            hash1 = compute_md5(f"{pref_c1}_{OUTFILE}")
+            hash2 = compute_md5(f"{pref_c2}_{OUTFILE}")
 
 
             f_out.write(f"{DELAY},{hash1},{hash2},{dur_c1},{dur_c2},{jfi}\n")
@@ -178,4 +231,13 @@ def run():
     print("\n--- Completed all tests ---")
 
 if __name__ == "__main__":
-    run()
+    # arg parse  for log enabled
+    parser = argparse.ArgumentParser(description="Run the experiment for fairness")
+    # add a flag to enable logging
+    parser.add_argument("--log", type=int, default=0, help="Enable logging")
+    args = parser.parse_args()
+    
+    if args.log == 0:
+        run(enable_log=False)
+    else:
+        run(enable_log=True)
