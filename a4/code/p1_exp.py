@@ -67,7 +67,7 @@ def run(expname):
         loss_list = [1]
     elif expname == "custom":
         delay_list = [20]
-        loss_list = [10]
+        loss_list = [20]
     print(loss_list, delay_list)
 
     # Loop to create the topology 10 times with varying loss (1% to 10%)

@@ -1,36 +1,23 @@
 import json
 import pickle
 
-def parse_packet(packet):
-    """
-    Deserializes the binary packet back into 'seq' and 'data'.
-    :param packet: bytes, binary serialized packet
-    :return: dict, with 'seq' and 'data' keys
-    """
-    # Decode the binary packet back into a JSON string
-    json_str = packet.decode("utf-8")
-    json_obj = json.loads(json_str)
-
-    # Extract and deserialize the data
-    seq = int(json_obj.get("seq"))
-    data = pickle.loads(json_obj.get("data").encode("latin1"))
-    return seq, data
-
 def make_packet(seq, data):
-    """
-    Serializes the JSON object with 'seq' and binary 'data' into a binary string.
-    :param seq: int, sequence number
-    :param data: bytes, binary data
-    :return: bytes, binary serialized packet
-    """
-    # Serialize the data using pickle and encode it in base64 for JSON compatibility
-    serialized_data = pickle.dumps(data)
-    json_obj = json.dumps(
-        {
-            "seq": seq,
-            "data": serialized_data.decode(
-                "latin1"
-            ),  # Decode to make it JSON-serializable
-        }
-    )
-    return json_obj.encode("utf-8")
+    # Convert `seq` to a bytes object of minimum length needed to represent the integer
+    seq_bytes = seq.to_bytes((seq.bit_length() + 7) // 8, byteorder='big', signed=False)
+    
+    # Store the length of seq_bytes in one byte, followed by the seq and data
+    packet = len(seq_bytes).to_bytes(1, byteorder='big') + seq_bytes + data
+    return packet
+
+def parse_packet(packet):
+    # Read the first byte to know the length of `seq`
+    seq_len = int.from_bytes(packet[0:1], byteorder='big')
+    
+    # Extract `seq` using the length we just read
+    seq_bytes = packet[1:1 + seq_len]
+    seq = int.from_bytes(seq_bytes, byteorder='big', signed=False)
+    
+    # The remaining part of `packet` is `data`
+    data = packet[1 + seq_len:]
+    
+    return seq, data

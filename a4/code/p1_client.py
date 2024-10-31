@@ -2,7 +2,7 @@ import argparse
 import socket
 from utils import parse_packet
 
-DOWNLOAD_FILE_NAME = "downloaded_file.txt"
+DOWNLOAD_FILE_NAME = "downloaded_file.bin"
 
 
 class Client:
@@ -10,7 +10,7 @@ class Client:
 
         # Constants
         # Maximum Segment Size
-        self.MSS = 1
+        self.MSS = 1400
         # Buffer Size
         self.BUFFER_SIZE = self.MSS + 1000
 

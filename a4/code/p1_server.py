@@ -3,13 +3,12 @@ import time
 import argparse
 from utils import make_packet, parse_packet
 
-# SERVER_FILE_PATH = "./test/test_10KB.bin"
-SERVER_FILE_PATH = "./test/test.txt"
-
+SERVER_FILE_PATH = "./test/test_100MB.bin"
+# SERVER_FILE_PATH = "./test/test.txt"
 
 class Server:
     # Maximum Segment Size for each packet
-    MSS = 1
+    MSS = 1400
     # MSS = 1400
     ALPHA = 0.125
     BETA = 0.25
