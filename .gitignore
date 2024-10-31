@@ -124,3 +124,5 @@ dmypy.json
 *.csv
 *.bin
 logs/
+p2_logs/
+p3_logs/

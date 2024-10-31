@@ -6,7 +6,7 @@ DOWNLOAD_FILE_NAME = "downloaded_file.bin"
 
 
 class Client:
-    def __init__(self, server_ip, server_port, pref_outfile, download_file_name):
+    def __init__(self, server_ip, server_port, download_file_name):
 
         # Constants
         # Maximum Segment Size
@@ -16,7 +16,6 @@ class Client:
 
         self.server_ip = server_ip
         self.server_port = server_port
-        self.pref_outfile = pref_outfile
 
         # Initialize UDP socket
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -24,7 +23,7 @@ class Client:
         self.client_socket.settimeout(2)
 
         # Output File
-        self.output_filename = f"{pref_outfile}_{download_file_name}"
+        self.output_filename = f"{download_file_name}"
         self.eof_received = False
         self.receive_file()
 
@@ -140,9 +139,8 @@ def read_args():
     parser = argparse.ArgumentParser(description="Reliable file receiver over UDP.")
     parser.add_argument("server_ip", help="IP address of the server")
     parser.add_argument("server_port", type=int, help="Port number of the server")
-    parser.add_argument("--pref_outfile", default="", help="Prefix for the output file")
     args = parser.parse_args()
-    return (args.server_ip, args.server_port, args.pref_outfile)
+    return (args.server_ip, args.server_port)
 
 
 if __name__ == "__main__":
