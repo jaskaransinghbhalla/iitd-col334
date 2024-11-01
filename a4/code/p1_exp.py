@@ -20,10 +20,10 @@ class CustomTopo(Topo):
 
         # Add links
         # Link between h1 and s1 with the specified packet loss
-        self.addLink(h1, s1, loss=loss, delay=f"{delay}ms")
+        self.addLink(h1, s1, loss=loss, delay=f"{delay}ms", bw=50)
 
         # Link between h2 and s1 with no packet loss
-        self.addLink(h2, s1, loss=0)
+        self.addLink(h2, s1, loss=0, bw=50)
 
 
 def compute_md5(file_path):
@@ -52,6 +52,7 @@ def run(expname):
     output_file = f"reliability_{expname}.csv"
     f_out = open(output_file, "w")
     f_out.write("loss,delay,fast_recovery,md5_hash,ttc\n")
+    f_out.flush()
 
     SERVER_IP = "10.0.0.1"
     SERVER_PORT = 6555

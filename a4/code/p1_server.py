@@ -8,7 +8,7 @@ SERVER_FILE_PATH = "./test/test_100MB.bin"
 
 class Server:
     # Maximum Segment Size for each packet
-    MSS = 1400
+    MSS = 50000000
     # MSS = 1400
     ALPHA = 0.125
     BETA = 0.25
